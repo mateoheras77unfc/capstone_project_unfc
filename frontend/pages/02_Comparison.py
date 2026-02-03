@@ -18,40 +18,80 @@ def get_assets():
     return []
 
 assets = get_assets()
-symbols = [a['symbol'] for a in assets]
+existing_symbols = [a['symbol'] for a in assets]
+
+# --- Asset Selection ---
+st.subheader("Select or Add Assets")
 
 selected_symbols = st.multiselect(
-    "Select Assets to Compare",
-    options=symbols,
-    default=symbols[:2] if len(symbols) >= 2 else symbols
+    "Choose from existing assets",
+    options=existing_symbols,
+    default=existing_symbols[:2] if len(existing_symbols) >= 2 else existing_symbols
 )
 
+# Custom symbol input
+st.markdown("**Or add new symbols:**")
+col1, col2, col3 = st.columns([2, 1, 1])
+with col1:
+    new_symbol = st.text_input(
+        "Enter a new symbol",
+        placeholder="TSLA, NVDA, SOL-USD...",
+        label_visibility="collapsed"
+    ).strip().upper()
+with col2:
+    new_asset_type = st.selectbox("Type", ["stock", "crypto"], label_visibility="collapsed")
+with col3:
+    add_clicked = st.button("Add & Fetch")
+
+if add_clicked and new_symbol:
+    if new_symbol not in existing_symbols:
+        with st.spinner(f"Fetching {new_symbol}..."):
+            try:
+                res = requests.post(
+                    f"{API_URL}/sync/{new_symbol}",
+                    params={"asset_type": new_asset_type}
+                )
+                if res.status_code == 200:
+                    st.success(f"Added and synced {new_symbol}!")
+                    st.cache_data.clear()
+                    st.experimental_rerun()
+                else:
+                    st.error(f"Failed to add {new_symbol}: {res.text}")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    else:
+        st.warning(f"{new_symbol} already exists. Select it from the list above.")
+
+st.markdown("---")
+
+# Build comparison table
 if selected_symbols:
     comparison_data = []
+    missing_data_symbols = []
     
     for symbol in selected_symbols:
         try:
-            # Fetch latest price (try 1wk first, then 1mo)
-            res = requests.get(f"{API_URL}/prices/{symbol}", params={"interval": "1wk"})
+            res = requests.get(f"{API_URL}/prices/{symbol}")
             data = res.json() if res.status_code == 200 else []
             
-            if not data:
-                 res = requests.get(f"{API_URL}/prices/{symbol}", params={"interval": "1mo"})
-                 data = res.json() if res.status_code == 200 else []
-            
             if data:
-                latest = data[0] # Order is desc
+                latest = data[0]
                 comparison_data.append({
                     "Symbol": symbol,
                     "Latest Date": latest['timestamp'],
-                    "Close Price": latest['close_price'],
-                    "Volume": latest['volume']
+                    "Close Price": f"${latest['close_price']:,.2f}" if latest['close_price'] else "N/A",
+                    "Volume": f"{latest['volume']:,.0f}" if latest['volume'] else "N/A"
                 })
+            else:
+                missing_data_symbols.append(symbol)
         except Exception:
-            pass
+            missing_data_symbols.append(symbol)
             
     if comparison_data:
-        # Use st.write to avoid PyArrow LargeUtf8 serialization issues
+        st.subheader("Comparison Table (Weekly Data)")
         st.write(comparison_data)
-    else:
-        st.info("No data available for selected assets.")
+    
+    if missing_data_symbols:
+        st.warning(f"No data found for: {', '.join(missing_data_symbols)}. Try syncing them from the Single Asset page.")
+else:
+    st.info("Select at least one asset to compare.")

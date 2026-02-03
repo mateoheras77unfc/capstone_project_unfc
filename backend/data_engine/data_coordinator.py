@@ -41,12 +41,11 @@ class DataCoordinator:
             logger.warning(f"No data returned for {symbol}")
             return
 
-        # 3. Prepare for Supabase
+        # 3. Prepare for Supabase (weekly data only, no interval column)
         records = []
         for _, row in df.iterrows():
             records.append({
                 "asset_id": asset_id,
-                "interval": interval,
                 "timestamp": row['timestamp'].isoformat(),
                 "open_price": float(row['open']),
                 "high_price": float(row['high']),
@@ -57,12 +56,12 @@ class DataCoordinator:
 
         # 4. Upsert into historical_prices
         # Supabase Python client uses .upsert() which requires the 
-        # unique constraint (asset_id, timestamp, interval) to be hit.
+        # unique constraint (asset_id, timestamp) to be hit.
         logger.info(f"Upserting {len(records)} records into Supabase...")
         try:
             res = self.supabase.table("historical_prices").upsert(
                 records, 
-                on_conflict="asset_id,timestamp,interval"
+                on_conflict="asset_id,timestamp"
             ).execute()
             
             # Update last_updated in assets table

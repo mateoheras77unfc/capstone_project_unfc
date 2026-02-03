@@ -34,7 +34,7 @@ def get_assets():
     return res.data
 
 @app.get("/prices/{symbol}")
-def get_prices(symbol: str, interval: str = "1wk"):
+def get_prices(symbol: str):
     supabase = get_supabase_client()
     
     # Get asset ID
@@ -44,20 +44,20 @@ def get_prices(symbol: str, interval: str = "1wk"):
     
     asset_id = asset_res.data[0]['id']
     
-    # Get prices
+    # Get prices (weekly data only)
     price_res = supabase.table("historical_prices") \
         .select("*") \
         .eq("asset_id", asset_id) \
-        .eq("interval", interval) \
         .order("timestamp", desc=True) \
         .execute()
         
     return price_res.data
 
 @app.post("/sync/{symbol}")
-def sync_asset(symbol: str, asset_type: str = "stock", interval: str = "1wk"):
+def sync_asset(symbol: str, asset_type: str = "stock"):
     try:
-        coordinator.sync_asset(symbol, asset_type, interval)
+        coordinator.sync_asset(symbol, asset_type, "1wk")
         return {"status": "success", "message": f"Synced {symbol}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

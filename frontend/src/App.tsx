@@ -6,7 +6,7 @@ import Comparison from "./pages/Comparison";
 export default function App() {
   return (
     <BrowserRouter>
-      <nav className="w-full flex justify-left py-4 text-sm text-slate-400 px-4">
+      <nav className="w-full flex justify-start py-4 text-sm text-slate-400 px-4">
         <div className="flex items-center gap-6">
           <Link to="/" className="hover:text-white transition-colors">
             Home

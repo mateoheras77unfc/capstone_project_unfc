@@ -11,7 +11,7 @@ export default function SingleAsset() {
   const [assets, setAssets] = useState<any[]>([]);
   const [selected, setSelected] = useState("");
   const [customSymbol, setCustomSymbol] = useState("");
-  const [assetType, setAssetType] = useState<"stock" | "crypto">("stock");
+  const [assetType] = useState<"stock" | "crypto">("stock");
   const [prices, setPrices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 

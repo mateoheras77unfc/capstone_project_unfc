@@ -20,7 +20,7 @@ export default function SingleAsset() {
   }, []);
 
   const symbol = customSymbol || selected;
-  const isNew = symbol && !assets.find((a) => a.symbol === symbol);
+  //const isNew = symbol && !assets.find((a) => a.symbol === symbol);
 
   const handleSync = async () => {
     if (!symbol) return;

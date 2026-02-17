@@ -42,11 +42,11 @@ export default function SingleAsset() {
     if (!symbol) return;
     setLoading(true);
     await syncAsset(symbol, assetType);
-    
+
     // Refresh the asset list so the new symbol appears in dropdown
     const updatedAssets = await getAssets();
     setAssets(updatedAssets);
-    
+
     setLoading(false);
     getPrices(symbol).then(setPrices);
   };
@@ -66,7 +66,7 @@ export default function SingleAsset() {
           <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
             UNF
           </span>{" "}
-          <span className="text-white">Invest</span>
+          <span className="text-white">Investor</span>
         </h1>
 
         <div className="mt-4 flex items-center justify-center gap-2 text-slate-400">

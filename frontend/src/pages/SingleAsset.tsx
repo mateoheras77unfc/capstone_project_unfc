@@ -39,14 +39,6 @@ interface ForecastResult {
 
 type ForecastModel = "base" | "lstm" | "prophet";
 
-// ── API helpers ──────────────────────────────────────────────────────────────
-
-const FORECAST_ENDPOINTS: Record<ForecastModel, string> = {
-  base: "/api/forecast/base",
-  lstm: "/api/forecast/lstm",
-  prophet: "/api/forecast/prophet",
-};
-
 // ── Model config ─────────────────────────────────────────────────────────────
 
 const MODEL_LABELS: Record<ForecastModel, string> = {

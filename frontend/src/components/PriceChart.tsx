@@ -91,7 +91,6 @@ export function PriceChart({ prices }: { prices: any[] }) {
               }}
             />
 
-            {/* 👇 EL AREA PINTA EL DEGRADADO */}
             <Area
               type="monotone"
               dataKey="close"
@@ -99,7 +98,6 @@ export function PriceChart({ prices }: { prices: any[] }) {
               stroke="none"
             />
 
-            {/* 👇 LA LÍNEA VA ENCIMA */}
             <Line
               type="monotone"
               dataKey="close"

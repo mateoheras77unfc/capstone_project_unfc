@@ -3,26 +3,14 @@
 INVESTMENT ANALYTICS API - FastAPI Backend
 =============================================================================
 
-This API serves as the bridge between the frontend (Streamlit) and the
-data layer (Supabase + yfinance).
-
 ENDPOINTS:
 ----------
-GET  /           - Health check
-GET  /assets     - List all cached assets
-GET  /prices/{symbol} - Get historical prices for an asset
-POST /sync/{symbol}   - Fetch and cache new asset data
-
-FOR PHASE 3/4 DEVELOPERS:
--------------------------
-Use these endpoints to retrieve data for your models:
-
-1. GET /prices/{symbol}
-   Returns: List of {timestamp, open_price, high_price, low_price, close_price, volume}
-   Data is WEEKLY. Use this for forecasting and optimization inputs.
-   
-2. The data is already cached in Supabase. You do NOT need to call yfinance directly.
-
+GET  /                      - Health check
+GET  /assets                - List all cached assets
+GET  /prices/{symbol}       - Get historical prices for an asset
+POST /sync/{symbol}         - Fetch and cache new asset data
+POST /api/forecast/base     - Baseline EWM forecast        ← NEW
+POST /api/forecast/lstm     - LSTM neural network forecast  ← NEW
 =============================================================================
 """
 
@@ -32,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from ..core.database import get_supabase_client
 from ..data_engine.data_coordinator import DataCoordinator
+from .forecast_routes import router as forecast_router          # ← NEW
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -43,16 +32,14 @@ app = FastAPI(
 # -----------------------------------------------------------------------------
 # CORS Configuration
 # -----------------------------------------------------------------------------
-# Allow requests from Streamlit and potential other frontends
 origins = [
-    "http://localhost:8501",    # Streamlit default
-    "http://localhost:5173",    # Vite (if used later)
+    "http://localhost:8501",
+    "http://localhost:5173",
     "http://127.0.0.1:8501",
     "https://capstone-project-unfc-ashen.vercel.app",
     "https://capstone-project-unfc.vercel.app"
 ]
 
-# Add deployed frontend URL if provided
 frontend_url = os.environ.get("FRONTEND_URL")
 if frontend_url:
     origins.append(frontend_url)
@@ -68,12 +55,17 @@ app.add_middleware(
 # -----------------------------------------------------------------------------
 # Data Coordinator Instance
 # -----------------------------------------------------------------------------
-# This coordinates all data fetching and caching operations
 coordinator = DataCoordinator()
 
 
 # =============================================================================
-# ENDPOINTS
+# REGISTER ROUTERS
+# =============================================================================
+app.include_router(forecast_router)                              # ← NEW
+
+
+# =============================================================================
+# EXISTING ENDPOINTS (unchanged)
 # =============================================================================
 
 @app.get("/")
@@ -84,11 +76,7 @@ def read_root():
 
 @app.get("/assets")
 def get_assets():
-    """
-    Returns all assets currently cached in the database.
-    
-    Response: List of assets with {id, symbol, name, asset_type, last_updated}
-    """
+    """Returns all assets currently cached in the database."""
     supabase = get_supabase_client()
     res = supabase.table("assets").select("*").execute()
     return res.data
@@ -96,60 +84,28 @@ def get_assets():
 
 @app.get("/prices/{symbol}")
 def get_prices(symbol: str):
-    """
-    Returns historical weekly prices for a given asset.
-    
-    This is the PRIMARY endpoint for Phase 3/4 to retrieve data.
-    Data is returned in DESCENDING order by timestamp (newest first).
-    
-    Args:
-        symbol: Ticker symbol (e.g., 'AAPL', 'BTC-USD')
-        
-    Returns:
-        List of price records with OHLCV data
-        
-    Raises:
-        404: If asset is not found in database
-    """
+    """Returns historical weekly prices for a given asset."""
     supabase = get_supabase_client()
-    
-    # First, get the asset ID from the symbol
+
     asset_res = supabase.table("assets").select("id").eq("symbol", symbol).execute()
     if not asset_res.data:
         raise HTTPException(status_code=404, detail="Asset not found")
-    
+
     asset_id = asset_res.data[0]['id']
-    
-    # Fetch all historical prices for this asset
+
     price_res = supabase.table("historical_prices") \
         .select("*") \
         .eq("asset_id", asset_id) \
         .order("timestamp", desc=True) \
         .execute()
-        
+
     return price_res.data
 
 
 @app.post("/sync/{symbol}")
 def sync_asset(symbol: str, asset_type: str = "stock"):
-    """
-    Fetches and caches historical data for a new or existing asset.
-    
-    This triggers a full sync from yfinance to Supabase.
-    Use this when adding a new asset or refreshing stale data.
-    
-    Args:
-        symbol: Ticker symbol to sync
-        asset_type: Either 'stock' or 'crypto'
-        
-    Returns:
-        Success message with symbol name
-        
-    Raises:
-        500: If sync fails
-    """
+    """Fetches and caches historical data for a new or existing asset."""
     try:
-        # Always use weekly interval
         coordinator.sync_asset(symbol, asset_type, "1wk")
         return {"status": "success", "message": f"Synced {symbol}"}
     except Exception as e:

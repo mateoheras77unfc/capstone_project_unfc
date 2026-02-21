@@ -8,6 +8,7 @@ Run with:
 """
 
 import uvicorn
+from app.main import app as app  # Expose ASGI app for process managers (uvicorn main:app)
 
 
 def main() -> None:

@@ -16,12 +16,14 @@ Phase 3/4 developers:
 """
 
 import os
+from pathlib import Path
 from supabase import create_client, Client
 from typing import Optional
 from dotenv import load_dotenv
 
-# Load environment variables from the root .env file
-load_dotenv()
+# Load .env from the backend/ directory (parent of core/)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=_BACKEND_DIR / ".env", override=False)
 
 # Supabase connection settings from environment
 SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")

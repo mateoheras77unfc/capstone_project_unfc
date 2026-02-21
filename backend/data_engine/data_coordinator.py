@@ -27,8 +27,8 @@ The data returned is WEEKLY closing prices. Do not assume any other interval.
 import pandas as pd
 from typing import List, Dict, Optional
 import logging
-from .yfinance_fetcher import YFinanceFetcher
-from ..core.database import get_supabase_client
+from data_engine.yfinance_fetcher import YFinanceFetcher
+from core.database import get_supabase_client
 from datetime import datetime
 
 # Set up logging

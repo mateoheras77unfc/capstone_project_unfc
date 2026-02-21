@@ -17,12 +17,14 @@ print(settings.SUPABASE_URL)
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
 
-# Load .env from the project root (works when running from any working dir)
-load_dotenv()
+# Load .env from the backend/ directory (parent of core/), works from any cwd
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=_BACKEND_DIR / ".env", override=False)
 
 
 class Settings:

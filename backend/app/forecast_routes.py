@@ -19,9 +19,9 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..data_engine.forecasting.base_forecaster import SimpleForecaster
-from ..data_engine.forecasting.lstm_model import LSTMForecastor
-from ..data_engine.forecasting.prophet_model import ProphetForecaster
+from data_engine.forecasting.base_forecaster import SimpleForecaster
+from data_engine.forecasting.lstm_model import LSTMForecastor
+from data_engine.forecasting.prophet_model import ProphetForecaster
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/forecast", tags=["forecast"])

@@ -17,10 +17,10 @@ POST /api/forecast/lstm     - LSTM neural network forecast  ← NEW
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-from ..core.config import get_settings
-from ..core.database import get_supabase_client
-from ..data_engine.data_coordinator import DataCoordinator
-from .forecast_routes import router as forecast_router
+from core.config import get_settings
+from core.database import get_supabase_client
+from data_engine.data_coordinator import DataCoordinator
+from app.forecast_routes import router as forecast_router
 
 settings = get_settings()
 

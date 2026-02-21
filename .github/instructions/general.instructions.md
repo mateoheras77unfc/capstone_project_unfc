@@ -8,7 +8,7 @@ applyTo: '**/*.py'
 ## 1. Project Context & Tech Stack
 You are acting as a Senior Data Engineer and Python Developer. You are building a web-based financial educational platform.
 - **Goal:** Create a dashboard for Time Series Forecasting (SARIMA) and Portfolio Optimization.
-- **Frontend:** Streamlit (`streamlit`).
+- **Frontend:** VITE OR REACT (`VITE OR REACT`).
 - **Backend/Logic:** Python 3.9+.
 - **Database:** Supabase (PostgreSQL).
 - **Data Source:** Yahoo Finance (`yfinance`) for Stocks and Crypto.
@@ -73,7 +73,7 @@ Implement the following logic for ALL data retrieval functions:
     - Cache hits vs. Cache misses.
 - **Error Handling:**
   - Wrap external API calls (`yfinance`, `supabase`) in `try/except` blocks.
-  - In Streamlit, use `st.error()` to display user-friendly error messages if data fetching fails.
+  - In VITE OR REACT, use `st.error()` to display user-friendly error messages if data fetching fails.
   - Do not crash the app on a single ticker failure; return an empty DataFrame or `None` and log the error.
 
 ---
@@ -82,14 +82,14 @@ Implement the following logic for ALL data retrieval functions:
 Ensure the code is organized as follows:
 ```text
 /
-├── .streamlit/
+├── .VITE OR REACT/
 │   └── secrets.toml      # Supabase credentials (gitignored)
 ├── utils/
 │   ├── __init__.py
 │   ├── db.py             # Supabase connection & CRUD
 │   ├── data_fetcher.py   # yfinance logic & caching strategy
 │   └── analytics.py      # SARIMA & Optimization math
-├── pages/                # Streamlit multipage structure
+├── pages/                # VITE OR REACT multipage structure
 │   ├── 1_Forecasting.py
 │   └── 2_Portfolio.py
 ├── app.py                # Main entry point (Landing page)

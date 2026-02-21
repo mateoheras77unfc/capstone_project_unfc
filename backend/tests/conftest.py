@@ -20,9 +20,11 @@ Usage
         assert resp.status_code == 200
 """
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable, List
 from unittest.mock import MagicMock
 
+import numpy as np
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
@@ -77,6 +79,178 @@ async def app_client(mock_db: MagicMock) -> AsyncGenerator[AsyncClient, None]:
         yield client
 
     app.dependency_overrides.clear()
+
+
+# ── Shared price-data factories ──────────────────────────────────────────────
+
+
+@pytest.fixture
+def price_series_factory() -> Callable[..., pd.Series]:
+    """
+    Factory fixture — returns a callable that builds a synthetic price pd.Series.
+
+    Usage::
+
+        def test_something(price_series_factory):
+            prices = price_series_factory(n=60, freq="W-MON")
+    """
+
+    def _make(
+        n: int = 60,
+        freq: str = "W-MON",
+        start: str = "2021-01-04",
+        seed: int = 42,
+    ) -> pd.Series:
+        """
+        Build a synthetic weekly or monthly price pd.Series.
+
+        Args:
+            n:     Number of data points.
+            freq:  Pandas frequency string (e.g. ``"W-MON"``, ``"MS"``).
+            start: Start date for the date range.
+            seed:  RNG seed for reproducibility.
+
+        Returns:
+            pd.Series with DatetimeIndex, oldest → newest.
+        """
+        dates = pd.date_range(start=start, periods=n, freq=freq)
+        rng = np.random.default_rng(seed)
+        prices = 100.0 + np.cumsum(rng.normal(0, 1, n))
+        return pd.Series(prices, index=dates, name="close")
+
+    return _make
+
+
+@pytest.fixture
+def price_rows_factory() -> Callable[..., List[dict]]:
+    """
+    Factory fixture — returns a callable that builds DB-style price row dicts.
+
+    Rows mirror what Supabase returns for the ``historical_prices`` table:
+    ``{"timestamp": <ISO-8601>, "close_price": <float>}``.
+
+    Usage::
+
+        def test_something(price_rows_factory):
+            rows = price_rows_factory(n=60)
+    """
+
+    def _make(
+        n: int = 60,
+        freq: str = "W-MON",
+        start: str = "2021-01-04",
+        seed: int = 42,
+    ) -> List[dict]:
+        """
+        Build synthetic price rows as returned by Supabase.
+
+        Args:
+            n:     Number of rows.
+            freq:  Pandas frequency string.
+            start: Start date for the date range.
+            seed:  RNG seed for reproducibility.
+
+        Returns:
+            List of dicts with ``timestamp`` and ``close_price`` keys.
+        """
+        dates = pd.date_range(start=start, periods=n, freq=freq, tz="UTC")
+        rng = np.random.default_rng(seed)
+        prices = 100.0 + np.cumsum(rng.normal(0, 1, n))
+        return [
+            {"timestamp": d.isoformat(), "close_price": round(float(p), 4)}
+            for d, p in zip(dates, prices)
+        ]
+
+    return _make
+
+
+def configure_forecast_mock(
+    mock_db: MagicMock,
+    asset_rows: list,
+    price_rows: list,
+) -> None:
+    """
+    Wire ``mock_db`` so the forecast endpoint's two DB queries return the
+    expected payloads.
+
+    The forecast endpoint calls:
+    - ``.table().select().eq().limit().execute()``   for the asset lookup.
+    - ``.table().select().eq().order().execute()``   for the price lookup.
+
+    Because ``.limit()`` and ``.order()`` are different methods on the mock,
+    both chains can be configured independently on the same ``MagicMock``.
+
+    Args:
+        mock_db:    The MagicMock Supabase client.
+        asset_rows: Rows to return from ``assets`` table query.
+        price_rows: Rows to return from ``historical_prices`` table query.
+    """
+    # assets: .table().select().eq().limit().execute()
+    (
+        mock_db.table.return_value
+        .select.return_value
+        .eq.return_value
+        .limit.return_value
+        .execute
+    ).return_value = MagicMock(data=asset_rows)
+
+    # prices: .table().select().eq().order().execute()
+    (
+        mock_db.table.return_value
+        .select.return_value
+        .eq.return_value
+        .order.return_value
+        .execute
+    ).return_value = MagicMock(data=price_rows)
+
+
+def configure_analyze_mock(
+    mock_db: MagicMock,
+    first_asset_rows: list,
+    second_asset_rows: list,
+    price_rows: list,
+) -> None:
+    """
+    Wire ``mock_db`` for the analyze endpoint which makes TWO asset lookups.
+
+    The analyze endpoint calls ``.limit().execute()`` twice:
+    - First call: initial existence check (decides whether to auto-sync).
+    - Second call: inside ``_fetch_prices()`` after the optional sync.
+
+    ``side_effect`` with a list returns the values in sequence, one per call.
+
+    The price query uses ``.order().execute()`` and is set via
+    ``return_value`` (only called once).
+
+    Args:
+        mock_db:            The MagicMock Supabase client.
+        first_asset_rows:   Rows for the initial existence check.
+                            Pass ``[]`` to simulate a new / unknown symbol.
+        second_asset_rows:  Rows for the ``_fetch_prices()`` lookup.
+                            Pass ``[{"id": "..."}]`` to simulate a present asset.
+        price_rows:         Rows for the historical-prices query.
+    """
+    # Use side_effect so each successive .limit().execute() call returns
+    # a different value (first check vs _fetch_prices lookup).
+    (
+        mock_db.table.return_value
+        .select.return_value
+        .eq.return_value
+        .limit.return_value
+        .execute
+    ).side_effect = [
+        MagicMock(data=first_asset_rows),
+        MagicMock(data=second_asset_rows),
+    ]
+
+    # prices: .table().select().eq().order().execute()
+    (
+        mock_db.table.return_value
+        .select.return_value
+        .eq.return_value
+        .order.return_value
+        .execute
+    ).return_value = MagicMock(data=price_rows)
 
 
 # ── Synchronous test client (for non-async tests) ─────────────────────────────

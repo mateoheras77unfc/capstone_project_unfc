@@ -28,7 +28,12 @@ interface Price {
 }
 
 interface ForecastResult {
-  ticker: string;
+  symbol: string;
+  interval: string;
+  model: string;
+  periods_ahead: number;
+  forecast_horizon_label: string;
+  data_points_used: number;
   dates: string[];
   point_forecast: number[];
   lower_bound: number[];
@@ -265,7 +270,7 @@ export default function SingleAsset() {
   }, [symbol]);
 
   const handleForecast = async () => {
-    if (!symbol || prices.length === 0) return;
+    if (!symbol) return;
 
     setForecastLoading(true);
     setForecastError(null);
@@ -275,8 +280,6 @@ export default function SingleAsset() {
       const result = await runForecast(
         forecastModel,
         symbol,
-        prices.map((p) => p.close_price),
-        prices.map((p) => p.timestamp),
         forecastPeriods
       );
       setForecast(result);
@@ -360,13 +363,13 @@ export default function SingleAsset() {
               onPeriodsChange={setForecastPeriods}
               onRun={handleForecast}
               loading={forecastLoading}
-              disabled={prices.length < 21}
+              disabled={prices.length < 52}
             />
 
-            {prices.length < 21 && (
+            {prices.length < 52 && (
               <p className="mt-2 text-xs text-amber-400/80 flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                Need at least 21 data points. Currently: {prices.length}
+                Need at least 52 weekly data points for forecasting. Currently: {prices.length}
               </p>
             )}
 

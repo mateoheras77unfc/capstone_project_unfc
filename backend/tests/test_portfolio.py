@@ -292,7 +292,7 @@ class TestPortfolioOptimize:
         assert resp.status_code == 200
 
         for w in resp.json()["weights"].values():
-            assert w >= 0.0
+            assert w > 0.0, f"weight {w} is zero — per-asset bounds should prevent this"
 
     async def test_efficient_frontier_has_points(
         self, app_client, mock_db, price_rows_factory
@@ -521,3 +521,92 @@ class TestPortfolioRequestValidation:
         assert "min" in summary
         assert "max" in summary
         assert "mean" in summary
+
+
+# ── Date-filter feature ────────────────────────────────────────────────────
+
+
+class TestPortfolioDateFilter:
+    """Tests for the optional from_date / to_date window parameters."""
+
+    async def test_from_date_and_to_date_echoed_in_stats_response(
+        self, app_client, mock_db, price_rows_factory
+    ) -> None:
+        """Dates passed in the request must be echoed back in the response."""
+        rows_a = price_rows_factory(n=60, seed=210)
+        rows_b = price_rows_factory(n=60, seed=211)
+        configure_portfolio_mock(
+            mock_db,
+            asset_rows_list=[_ASSET_A, _ASSET_B],
+            price_rows_list=[rows_a, rows_b],
+        )
+
+        resp = await app_client.post(
+            _STATS_URL,
+            json={
+                **_default_stats_body(),
+                "from_date": "2022-01-01",
+                "to_date": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["from_date"] == "2022-01-01"
+        assert data["to_date"] == "2024-12-31"
+
+    async def test_from_date_and_to_date_echoed_in_optimize_response(
+        self, app_client, mock_db, price_rows_factory
+    ) -> None:
+        """Dates passed to optimize must also be echoed in the optimize response."""
+        rows_a = price_rows_factory(n=60, seed=220)
+        rows_b = price_rows_factory(n=60, seed=221)
+        configure_portfolio_mock(
+            mock_db,
+            asset_rows_list=[_ASSET_A, _ASSET_B],
+            price_rows_list=[rows_a, rows_b],
+        )
+
+        resp = await app_client.post(
+            _OPT_URL,
+            json={
+                **_default_opt_body(),
+                "from_date": "2021-06-01",
+                "to_date": "2023-06-30",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["from_date"] == "2021-06-01"
+        assert data["to_date"] == "2023-06-30"
+
+    async def test_422_when_from_date_not_before_to_date(
+        self, app_client, mock_db
+    ) -> None:
+        """from_date >= to_date must be rejected by the schema validator."""
+        resp = await app_client.post(
+            _STATS_URL,
+            json={
+                **_default_stats_body(),
+                "from_date": "2024-01-01",
+                "to_date": "2023-01-01",  # earlier than from_date
+            },
+        )
+        assert resp.status_code == 422
+
+    async def test_omitting_dates_returns_null_in_response(
+        self, app_client, mock_db, price_rows_factory
+    ) -> None:
+        """When no dates are provided the response fields must be null."""
+        rows_a = price_rows_factory(n=60, seed=230)
+        rows_b = price_rows_factory(n=60, seed=231)
+        configure_portfolio_mock(
+            mock_db,
+            asset_rows_list=[_ASSET_A, _ASSET_B],
+            price_rows_list=[rows_a, rows_b],
+        )
+
+        resp = await app_client.post(_STATS_URL, json=_default_stats_body())
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["from_date"] is None
+        assert data["to_date"] is None

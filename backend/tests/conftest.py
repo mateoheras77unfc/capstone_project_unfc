@@ -283,15 +283,23 @@ def configure_portfolio_mock(
         MagicMock(data=rows) for rows in asset_rows_list
     ]
 
-    (
+    # Price chain — supports both the plain path (.eq().order().execute())
+    # and the date-filtered paths (.eq().gte()...lt()...order().execute()).
+    # We wire the full chain and make intermediate filter calls pass-through
+    # so the same side_effect list is consumed regardless of which filters
+    # are applied at runtime.
+    price_eq = (
         mock_db.table.return_value
         .select.return_value
         .eq.return_value
-        .order.return_value
-        .execute
-    ).side_effect = [
-        MagicMock(data=rows) for rows in price_rows_list
-    ]
+    )
+    price_side_effect = [MagicMock(data=rows) for rows in price_rows_list]
+
+    # Pass-throughs for optional date filters (.gte() and .lt())
+    price_eq.gte.return_value = price_eq
+    price_eq.lt.return_value = price_eq
+
+    price_eq.order.return_value.execute.side_effect = price_side_effect
 
 
 # ── Synchronous test client (for non-async tests) ─────────────────────────────

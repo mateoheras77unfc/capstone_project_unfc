@@ -14,39 +14,29 @@ POST /api/forecast/lstm     - LSTM neural network forecast  ← NEW
 =============================================================================
 """
 
-import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
+from ..core.config import get_settings
 from ..core.database import get_supabase_client
 from ..data_engine.data_coordinator import DataCoordinator
-from .forecast_routes import router as forecast_router          # ← NEW
+from .forecast_routes import router as forecast_router
+
+settings = get_settings()
 
 # Initialize FastAPI application
 app = FastAPI(
-    title="Investment Analytics API",
-    description="Backend API for the Educational Investment Platform",
-    version="0.1.0"
+    title=settings.APP_TITLE,
+    description=settings.APP_DESCRIPTION,
+    version=settings.APP_VERSION,
 )
 
 # -----------------------------------------------------------------------------
-# CORS Configuration
+# CORS Configuration  (origins managed centrally in core/config.py)
 # -----------------------------------------------------------------------------
-origins = [
-    "http://localhost:8501",
-    "http://localhost:5173",
-    "http://127.0.0.1:8501",
-    "https://capstone-project-unfc-ashen.vercel.app",
-    "https://capstone-project-unfc.vercel.app"
-]
-
-frontend_url = os.environ.get("FRONTEND_URL")
-if frontend_url:
-    origins.append(frontend_url)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

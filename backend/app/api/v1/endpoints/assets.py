@@ -66,13 +66,20 @@ def sync_asset(
         HTTPException 422: If yfinance returns no data for the symbol.
     """
     try:
-        _coordinator.sync_asset(symbol.upper(), asset_type, interval)
+        rows = _coordinator.sync_asset(symbol.upper(), asset_type, interval)
+    except ValueError as exc:
+        # yfinance returned no data for the symbol
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        # Supabase connection / permission problem
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Sync failed for %s", symbol)
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=f"Sync failed: {exc}") from exc
 
     return SyncResponse(
         status="success",
-        message=f"Synced {symbol.upper()} ({interval})",
+        message=f"Synced {symbol.upper()} ({interval}) — {rows} rows written",
         symbol=symbol.upper(),
+        rows_synced=rows,
     )

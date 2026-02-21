@@ -45,3 +45,4 @@ class SyncResponse(BaseModel):
     status: str = Field(..., examples=["success"])
     message: str
     symbol: str
+    rows_synced: int = 0

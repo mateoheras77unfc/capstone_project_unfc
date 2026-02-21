@@ -19,7 +19,6 @@ data layer evolve independently.
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from core.database import get_supabase_client
 from data_engine.fetcher import YFinanceFetcher
@@ -46,7 +45,7 @@ class DataCoordinator:
 
     def sync_asset(
         self, symbol: str, asset_type: str, interval: str = "1wk"
-    ) -> None:
+    ) -> int:
         """
         Fetch and cache historical OHLCV data for ``symbol``.
 
@@ -55,24 +54,32 @@ class DataCoordinator:
             asset_type: One of ``"stock"``, ``"crypto"``, or ``"index"``.
             interval:   yfinance interval — ``"1wk"`` (default) or ``"1mo"``.
 
+        Returns:
+            Number of rows upserted.
+
         Raises:
-            Exception: Propagates Supabase errors after logging them.
+            RuntimeError: If the asset row cannot be resolved or created.
+            ValueError:   If yfinance returns no data for the symbol.
+            Exception:    Propagates Supabase upsert errors.
         """
         db = get_supabase_client()
 
         # 1. Resolve (or create) the asset row and get its UUID.
         asset_id = self._get_or_create_asset(db, symbol, asset_type)
+        # _get_or_create_asset raises on failure; None should never happen,
+        # but guard defensively.
         if not asset_id:
-            logger.error("Could not resolve asset_id for %s — aborting sync", symbol)
-            return
+            raise RuntimeError(f"Could not resolve asset_id for {symbol}")
 
         # 2. Pull history from yfinance.
         logger.info("Fetching %s history for %s…", interval, symbol)
         df = self._fetcher.fetch_history(symbol, interval=interval)
 
         if df.empty:
-            logger.warning("yfinance returned no data for %s", symbol)
-            return
+            raise ValueError(
+                f"yfinance returned no data for '{symbol}'. "
+                "Check the symbol spelling and try again."
+            )
 
         # 3. Transform to the Supabase schema.
         records = [
@@ -100,6 +107,7 @@ class DataCoordinator:
             ).eq("id", asset_id).execute()
 
             logger.info("Sync complete for %s (%d rows)", symbol, len(records))
+            return len(records)
         except Exception:
             logger.exception("Upsert failed for %s", symbol)
             raise
@@ -108,7 +116,7 @@ class DataCoordinator:
 
     def _get_or_create_asset(
         self, db, symbol: str, asset_type: str
-    ) -> Optional[str]:
+    ) -> str:
         """
         Return the UUID of the asset row, creating it if necessary.
 
@@ -118,18 +126,24 @@ class DataCoordinator:
             asset_type: Asset category.
 
         Returns:
-            UUID string, or ``None`` on failure.
+            UUID string.
+
+        Raises:
+            RuntimeError: If the DB lookup or insert fails.
         """
         try:
+            # Use .limit(1) instead of .single() — .single() raises an
+            # APIError when 0 rows are returned, masking "not found" as an
+            # exception and causing the whole sync to abort silently.
             res = (
                 db.table("assets")
                 .select("id")
                 .eq("symbol", symbol)
-                .single()
+                .limit(1)
                 .execute()
             )
             if res.data:
-                return res.data["id"]
+                return res.data[0]["id"]
 
             # Not found — insert a new row.
             insert_res = (
@@ -138,7 +152,7 @@ class DataCoordinator:
                     {
                         "symbol": symbol,
                         "asset_type": asset_type,
-                        "name": symbol,          # name can be enriched later
+                        "name": symbol,
                         "currency": "USD",
                     }
                 )
@@ -148,6 +162,9 @@ class DataCoordinator:
             logger.info("Created asset record for %s (id=%s)", symbol, new_id)
             return new_id
 
-        except Exception:
+        except Exception as exc:
             logger.exception("DB error while resolving asset for %s", symbol)
-            return None
+            raise RuntimeError(
+                f"Failed to resolve/create asset '{symbol}' in Supabase. "
+                "Check SUPABASE_URL, SUPABASE_KEY, and DB permissions."
+            ) from exc

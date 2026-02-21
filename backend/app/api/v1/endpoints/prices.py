@@ -49,17 +49,17 @@ def get_prices(
     symbol = symbol.upper()
     limit = min(limit, 1000)  # hard cap
 
-    # Resolve asset id
+    # Resolve asset id — use .limit(1) not .single() to avoid APIError on 0 rows
     asset_res = (
-        db.table("assets").select("id").eq("symbol", symbol).single().execute()
+        db.table("assets").select("id").eq("symbol", symbol).limit(1).execute()
     )
     if not asset_res.data:
         raise HTTPException(
             status_code=404,
-            detail=f"Symbol '{symbol}' not found. Use POST /assets/sync/{symbol} to cache it.",
+            detail=f"Symbol '{symbol}' not found. Use POST /api/v1/assets/sync/{symbol} to cache it.",
         )
 
-    asset_id = asset_res.data["id"]
+    asset_id = asset_res.data[0]["id"]
 
     price_res = (
         db.table("historical_prices")

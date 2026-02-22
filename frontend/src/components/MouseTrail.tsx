@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-const BRAND_COLORS = ["#0487D9", "#F27405", "#F23005", "#A60303"];
+const BRAND_COLORS = ["#00D4FF", "#9B6DFF", "#00D4FF", "#7C3AED", "#22D3EE"];
 
 interface Particle {
   x: number;

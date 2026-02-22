@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, DollarSign, TrendingUp } from "lucide-react";
 import {
   PieChart,
   Pie,
@@ -63,6 +63,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
   const [results, setResults] = useState<OptimizeResponse | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [investAmount, setInvestAmount] = useState<string>("");
   const { toast } = useToast();
 
   const handleAddSymbol = (sym: string) => {
@@ -347,6 +348,95 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* ── Investment Allocation Calculator ── */}
+              <Card className="border border-cyan-500/20 bg-cyan-500/5">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-cyan-400" />
+                    Investment Allocation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">$</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="Enter total investment amount"
+                        value={investAmount}
+                        onChange={(e) => setInvestAmount(e.target.value)}
+                        className="pl-7 text-base h-11"
+                      />
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-muted-foreground"
+                      onClick={() => setInvestAmount("")}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+
+                  {investAmount && parseFloat(investAmount) > 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Based on the optimal weights, here is how to allocate{" "}
+                        <span className="font-bold text-white">
+                          ${parseFloat(investAmount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>:
+                      </p>
+                      <div className="space-y-4">
+                        {pieData.map((entry, index) => {
+                          const alloc = (entry.value / 100) * parseFloat(investAmount);
+                          return (
+                            <div key={entry.name} className="space-y-1.5">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="inline-block h-3 w-3 rounded-full shrink-0"
+                                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                                  />
+                                  <span className="font-semibold">{entry.name}</span>
+                                  <span className="text-muted-foreground">({entry.value.toFixed(1)}%)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 font-bold text-base">
+                                  <TrendingUp className="h-4 w-4 text-cyan-400" />
+                                  <span>
+                                    ${alloc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{
+                                    width: `${entry.value}%`,
+                                    backgroundColor: COLORS[index % COLORS.length],
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-between pt-3 border-t border-border text-sm">
+                        <span className="text-muted-foreground font-medium">Total</span>
+                        <span className="font-bold text-base">
+                          ${parseFloat(investAmount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Enter an amount above to see the exact dollar allocation per asset.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 

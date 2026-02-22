@@ -38,12 +38,35 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
   const { toast } = useToast();
 
   // Reverse prices to be chronological for the chart
+  let baseData = [...initialPrices].reverse();
+
+  // If monthly interval is selected, aggregate weekly data into monthly means
+  if (interval === "1mo") {
+    const monthlyGroups: Record<string, { sum: number; count: number; date: string }> = {};
+    
+    baseData.forEach((p) => {
+      const d = new Date(p.timestamp);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthlyGroups[monthKey]) {
+        monthlyGroups[monthKey] = { sum: 0, count: 0, date: p.timestamp };
+      }
+      monthlyGroups[monthKey].sum += p.close_price;
+      monthlyGroups[monthKey].count += 1;
+    });
+
+    baseData = Object.values(monthlyGroups).map((group) => ({
+      ...baseData[0],
+      timestamp: group.date,
+      close_price: group.sum / group.count,
+    }));
+  }
+
   const chartData: Array<{
     date: string;
     price: number;
     lower?: number;
     upper?: number;
-  }> = [...initialPrices].reverse().map((p) => ({
+  }> = baseData.map((p) => ({
     date: new Date(p.timestamp).toLocaleDateString(),
     price: p.close_price,
   }));
@@ -104,7 +127,10 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
 
           <Select
             value={interval}
-            onValueChange={(val: any) => setInterval(val)}
+            onValueChange={(val: any) => {
+              setInterval(val);
+              setForecast(null);
+            }}
           >
             <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Interval" />

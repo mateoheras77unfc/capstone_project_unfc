@@ -5,6 +5,11 @@
       "source": "wshobson/agents",
       "sourceType": "github",
       "computedHash": "bdf01cb716d99c640cf02438eee71b544709730ef4d59b3cc24b8721a4540e4b"
+    },
+    "shadcn-ui": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "b418209ba816e012ac72e71a8256350a9676d1b31102112e4b174c91026033f8"
     }
   }
 }

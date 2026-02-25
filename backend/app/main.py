@@ -33,6 +33,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from core.config import get_settings
 from core.database import get_supabase_client
+from app.chat_routes import router as chat_router
+app.include_router(chat_router)
 
 logger = logging.getLogger(__name__)
 

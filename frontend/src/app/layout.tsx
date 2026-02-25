@@ -4,6 +4,7 @@ import "./globals.css";
 import { LocalEnvBanner } from "@/components/LocalEnvBanner";
 import { Toaster } from "@/components/ui/toaster";
 import { NavBar } from "@/components/NavBar";
+import { SparkChat } from "@/components/SparkChat"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({
           {children}
         </main>
         <Toaster />
+        <SparkChat /> 
       </body>
     </html>
   );

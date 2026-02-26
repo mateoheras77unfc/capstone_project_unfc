@@ -15,6 +15,9 @@ import os
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter(prefix="/api")
 
@@ -59,9 +62,10 @@ async def chat(req: ChatRequest):
     if not api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not set")
 
-    messages = [
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages += [
         {"role": m.role, "content": m.content}
-        for m in req.history[-8:]  # keep last 8 turns
+        for m in req.history[-8:]
     ]
     messages.append({"role": "user", "content": req.message})
 
@@ -73,10 +77,9 @@ async def chat(req: ChatRequest):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "llama3-8b-8192",   # free on Groq
+                "model": "llama-3.3-70b-versatile",
                 "max_tokens": 600,
                 "temperature": 0.65,
-                "system": SYSTEM_PROMPT,
                 "messages": messages,
             },
         )

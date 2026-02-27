@@ -32,7 +32,7 @@ interface StockChartProps {
 
 export function StockChart({ symbol, initialPrices }: StockChartProps) {
   const [model, setModel] = useState<"base" | "prophet" | "lstm">("base");
-  const [interval, setInterval] = useState<"1wk" | "1mo">("1wk");
+  const [interval, setInterval] = useState<"1d" | "1wk" | "1mo">("1d");
   const [forecast, setForecast] = useState<AnalyzeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -40,25 +40,39 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
   // Reverse prices to be chronological for the chart
   let baseData = [...initialPrices].reverse();
 
-  // If monthly interval is selected, aggregate weekly data into monthly means
-  if (interval === "1mo") {
-    const monthlyGroups: Record<string, { sum: number; count: number; date: string }> = {};
-    
-    baseData.forEach((p) => {
-      const d = new Date(p.timestamp);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthlyGroups[monthKey]) {
-        monthlyGroups[monthKey] = { sum: 0, count: 0, date: p.timestamp };
+  // Helper: group daily data by a key and return mean close per group
+  function aggregateByKey(
+    data: PriceOut[],
+    keyFn: (d: Date) => string
+  ): PriceOut[] {
+    const groups: Record<string, { sum: number; count: number; first: PriceOut }> = {};
+    data.forEach((p) => {
+      const key = keyFn(new Date(p.timestamp));
+      if (!groups[key]) {
+        groups[key] = { sum: 0, count: 0, first: p };
       }
-      monthlyGroups[monthKey].sum += p.close_price;
-      monthlyGroups[monthKey].count += 1;
+      groups[key].sum += p.close_price;
+      groups[key].count += 1;
     });
-
-    baseData = Object.values(monthlyGroups).map((group) => ({
-      ...baseData[0],
-      timestamp: group.date,
-      close_price: group.sum / group.count,
+    return Object.values(groups).map(({ sum, count, first }) => ({
+      ...first,
+      close_price: sum / count,
     }));
+  }
+
+  // Aggregate daily data into weekly or monthly means
+  if (interval === "1wk") {
+    baseData = aggregateByKey(baseData, (d) => {
+      // ISO week: year + week number
+      const jan1 = new Date(d.getFullYear(), 0, 1);
+      const week = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+      return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+    });
+  } else if (interval === "1mo") {
+    baseData = aggregateByKey(
+      baseData,
+      (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    );
   }
 
   const chartData: Array<{
@@ -136,6 +150,7 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
               <SelectValue placeholder="Interval" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="1d">Daily</SelectItem>
               <SelectItem value="1wk">Weekly</SelectItem>
               <SelectItem value="1mo">Monthly</SelectItem>
             </SelectContent>

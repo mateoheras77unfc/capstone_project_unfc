@@ -44,7 +44,7 @@ class DataCoordinator:
     # ── public API ────────────────────────────────────────────────────────
 
     def sync_asset(
-        self, symbol: str, asset_type: str, interval: str = "1wk"
+        self, symbol: str, asset_type: str, interval: str = "1d"
     ) -> int:
         """
         Fetch and cache historical OHLCV data for ``symbol``.
@@ -52,7 +52,7 @@ class DataCoordinator:
         Args:
             symbol:     Ticker (e.g. ``"AAPL"``, ``"BTC-USD"``).
             asset_type: One of ``"stock"``, ``"crypto"``, or ``"index"``.
-            interval:   yfinance interval — ``"1wk"`` (default) or ``"1mo"``.
+            interval:   yfinance interval — ``"1d"`` (default), ``"1wk"`` or ``"1mo"``.
 
         Returns:
             Number of rows upserted.

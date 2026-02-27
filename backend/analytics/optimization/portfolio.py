@@ -24,6 +24,7 @@ from pypfopt import EfficientFrontier, expected_returns, risk_models
 # ── Annualisation frequency mapping ──────────────────────────────────────────
 
 _FREQ: Dict[str, int] = {
+    "1d": 252,
     "1wk": 52,
     "1mo": 12,
 }

@@ -17,6 +17,11 @@ from pydantic import BaseModel, Field, field_validator
 # label_plural    – used in human-readable horizon strings (n > 1 periods).
 # ---------------------------------------------------------------------------
 INTERVAL_CONFIG: Dict[str, Dict[str, Any]] = {
+    "1d": {
+        "min_samples": 252,
+        "label_singular": "day",
+        "label_plural": "days",
+    },
     "1wk": {
         "min_samples": 52,
         "label_singular": "week",
@@ -51,7 +56,7 @@ class ForecastRequest(BaseModel):
     """
 
     symbol: str
-    interval: Literal["1wk", "1mo"] = "1wk"
+    interval: Literal["1d", "1wk", "1mo"] = "1d"
     periods: int = Field(default=4, ge=1, le=52)
     lookback_window: int = Field(default=20, ge=5, le=60)
     epochs: int = Field(default=50, ge=10, le=200)

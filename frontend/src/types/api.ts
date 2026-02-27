@@ -28,7 +28,7 @@ export interface SyncResponse {
 
 export interface ForecastRequest {
   symbol: string;
-  interval?: "1wk" | "1mo";
+  interval?: "1d" | "1wk" | "1mo";
   periods?: number;
   lookback_window?: number;
   epochs?: number;
@@ -51,7 +51,7 @@ export interface ForecastResponse {
 }
 
 export interface AnalyzeRequest {
-  interval?: "1wk" | "1mo";
+  interval?: "1d" | "1wk" | "1mo";
   periods?: number;
   model?: "base" | "lstm" | "prophet";
   asset_type?: "stock" | "crypto" | "index";
@@ -70,7 +70,7 @@ export interface AnalyzeResponse extends ForecastResponse {
 
 export interface PortfolioBaseRequest {
   symbols: string[];
-  interval?: "1wk" | "1mo";
+  interval?: "1d" | "1wk" | "1mo";
   risk_free_rate?: number;
   from_date?: string | null;
   to_date?: string | null;

@@ -258,7 +258,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
                   </div>
                 ) : (
                   <div className="text-muted-foreground text-sm">
-                    Stats not available. The asset might not have enough historical data (minimum 52 weeks required).
+                    Stats not available. The asset might not have enough historical data (minimum 60 trading days required).
                   </div>
                 )}
               </CardContent>

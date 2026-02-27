@@ -367,7 +367,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                   {stats && stats.individual && (
                     <div className="text-xs text-muted-foreground mt-1">
                       {target === "efficient_return" 
-                        ? `Valid range: ~${(Math.min(...Object.values(stats.individual).map((a: any) => a.avg_return * 52))).toFixed(4)} to ${(Math.max(...Object.values(stats.individual).map((a: any) => a.avg_return * 52))).toFixed(4)}`
+                        ? `Valid range: ~${(Math.min(...Object.values(stats.individual).map((a: any) => a.avg_return * 252))).toFixed(4)} to ${(Math.max(...Object.values(stats.individual).map((a: any) => a.avg_return * 252))).toFixed(4)}`
                         : `Max volatility: ~${(Math.max(...Object.values(stats.individual).map((a: any) => a.annualized_volatility))).toFixed(4)}`
                       }
                     </div>
@@ -474,22 +474,22 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                     <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Date Range</div>
                     <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{fromDate} → {toDate}</div>
                   </div>
-                  {results?.expected_return != null && (
+                  {results?.performance?.expected_return != null && (
                     <div>
                       <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Expected Return</div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>{(results.expected_return * 100).toFixed(2)}%</div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>{(results.performance.expected_return * 100).toFixed(2)}%</div>
                     </div>
                   )}
-                  {results?.volatility != null && (
+                  {results?.performance?.volatility != null && (
                     <div>
                       <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Portfolio Volatility</div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#dc2626" }}>{(results.volatility * 100).toFixed(2)}%</div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#dc2626" }}>{(results.performance.volatility * 100).toFixed(2)}%</div>
                     </div>
                   )}
-                  {results?.sharpe_ratio != null && (
+                  {results?.performance?.sharpe_ratio != null && (
                     <div>
                       <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Sharpe Ratio</div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>{results.sharpe_ratio?.toFixed(4)}</div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>{results.performance.sharpe_ratio?.toFixed(4)}</div>
                     </div>
                   )}
                 </div>

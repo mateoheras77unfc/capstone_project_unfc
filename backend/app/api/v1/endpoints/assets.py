@@ -197,14 +197,14 @@ def delete_asset(
 def sync_asset(
     symbol: str,
     asset_type: str = "stock",
-    interval: str = "1wk",
+    interval: str = "1d",
 ) -> SyncResponse:
     """
     Fetch historical OHLCV data from Yahoo Finance and cache it in Supabase.
 
     - If the asset already exists, only missing dates are upserted.
     - Supported ``asset_type`` values: ``stock``, ``crypto``, ``index``.
-    - Supported ``interval`` values: ``1wk``, ``1mo``.
+    - Supported ``interval`` values: ``1d`` (default), ``1wk``, ``1mo``.
 
     Args:
         symbol:     Ticker symbol (e.g. ``AAPL``, ``BTC-USD``).

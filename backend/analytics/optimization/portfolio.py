@@ -97,7 +97,7 @@ def _mu_sigma(prices_df: pd.DataFrame, interval: str):
     Uses PyPortfolioOpt's ``mean_historical_return`` and ``sample_cov``
     with the correct annualisation frequency for the bar interval.
     """
-    freq = _FREQ.get(interval, 52)
+    freq = _FREQ.get(interval, 252)
     mu = expected_returns.mean_historical_return(prices_df, frequency=freq)
     S = risk_models.sample_cov(prices_df, frequency=freq)
     return mu, S

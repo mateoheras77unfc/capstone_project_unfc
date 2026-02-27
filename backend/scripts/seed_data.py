@@ -5,9 +5,9 @@ import sys
 import os
 
 # Add the parent directory to sys.path so we can import backend modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from backend.data_engine.data_coordinator import DataCoordinator
+from data_engine.coordinator import DataCoordinator
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -26,10 +26,9 @@ def seed():
     for asset in test_assets:
         logger.info(f"Seeding {asset['symbol']}...")
         try:
-            # Sync weekly data
-            coord.sync_asset(asset['symbol'], asset['type'], interval="1wk")
-            # Sync monthly data
-            coord.sync_asset(asset['symbol'], asset['type'], interval="1mo")
+            # Sync daily data — single source of truth; the frontend
+            # aggregates to weekly/monthly views on the client side.
+            coord.sync_asset(asset['symbol'], asset['type'], interval="1d")
         except Exception as e:
             logger.error(f"Failed to seed {asset['symbol']}: {e}")
 

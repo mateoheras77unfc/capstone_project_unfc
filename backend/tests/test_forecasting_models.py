@@ -11,8 +11,6 @@ SimpleForecaster.fit              – happy path + error paths.
 SimpleForecaster.forecast         – shape, ordering, date validity,
                                     widen-over-horizon, CI echo.
 SimpleForecaster.get_model_info   – expected keys and values.
-LSTMForecastor                    – ImportError path when TF absent.
-
 These tests are pure unit tests — no network, no database.
 Run with::
 
@@ -278,30 +276,3 @@ class TestSimpleForecasterModelInfo:
         assert info["span"] == 10
 
 
-# ── LSTMForecastor (TensorFlow absent) ───────────────────────────────────────
-
-
-class TestLSTMForecastorNoTensorFlow:
-    """
-    Tests for LSTMForecastor when TensorFlow is not installed.
-
-    These tests always run and validate the graceful ImportError path.
-    If TensorFlow is installed in the environment, the tests are skipped
-    so they do not interfere with TF-available CI runs.
-    """
-
-    def test_instantiation_raises_import_error(self) -> None:
-        """LSTMForecastor() must raise ImportError with a helpful message."""
-        try:
-            import tensorflow  # noqa: F401
-
-            pytest.skip(
-                "TensorFlow is installed — skipping no-TF ImportError test"
-            )
-        except ImportError:
-            pass
-
-        from analytics.forecasting.lstm import LSTMForecastor
-
-        with pytest.raises(ImportError, match="TensorFlow"):
-            LSTMForecastor()

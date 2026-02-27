@@ -25,7 +25,7 @@ Error codes
 404  Symbol is brand-new AND yfinance has no history for it.
 422  Not enough rows in the DB for the chosen interval.
      Malformed request body (Pydantic validation).
-503  Supabase unreachable / TensorFlow not installed (lstm model).
+503  Supabase unreachable / prophet not installed.
 500  Unexpected internal error.
 
 Design decisions
@@ -47,7 +47,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import LSTMForecastor, ProphetForecaster, SimpleForecaster
+from analytics.forecasting import ProphetForecaster, SimpleForecaster
 from app.api.dependencies import get_db
 from data_engine.coordinator import DataCoordinator
 from schemas.analyze import AnalyzeRequest, AnalyzeResponse, SyncSummary
@@ -249,8 +249,10 @@ def _run_model(
     elif req.model == "prophet":
         model = ProphetForecaster(confidence_level=req.confidence_level)
     else:  # "base" (default)
+        # Use at least 60-day span so EWM is a smoothed "recent average", not overly tilted to last few weeks
+        span = min(max(req.lookback_window, 60), len(prices) - 1)
         model = SimpleForecaster(
-            span=min(req.lookback_window, len(prices) - 1),
+            span=span,
             confidence_level=req.confidence_level,
         )
 
@@ -293,7 +295,7 @@ async def analyze(
     {
       "interval":   "1wk",     // "1wk" | "1mo"
       "periods":    4,          // 1–52 steps forward
-      "model":      "base",     // "base" | "lstm" | "prophet"
+      "model":      "base",     // "base" | "prophet"
       "asset_type": "stock"     // "stock" | "crypto" | "index"
     }
     ```
@@ -397,7 +399,7 @@ async def analyze(
             request,
         )
     except ImportError as exc:
-        pkg = "TensorFlow" if request.model == "lstm" else "prophet"
+        pkg = "prophet"
         raise HTTPException(
             status_code=503,
             detail=f"'{pkg}' is not installed on this server. Use model='base' instead.",

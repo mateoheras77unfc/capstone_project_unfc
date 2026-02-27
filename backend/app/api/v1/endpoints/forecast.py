@@ -5,9 +5,9 @@ Forecast endpoints.
 
 Routes
 ------
-POST /api/v1/forecast/base    EWM baseline forecast (no GPU needed).
-POST /api/v1/forecast/lstm    LSTM neural-network forecast.
-POST /api/v1/forecast/prophet Facebook Prophet trend/seasonality forecast.
+POST /api/v1/forecast/base       EWM baseline forecast (no GPU needed).
+POST /api/v1/forecast/prophet    Facebook Prophet trend/seasonality forecast.
+POST /api/v1/forecast/prophet-xgb Prophet + XGBoost residual correction.
 
 All three share identical request and response shapes (ForecastRequest /
 ForecastResponse) so the frontend only needs to change the URL to switch
@@ -34,9 +34,18 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import LSTMForecastor, ProphetForecaster, SimpleForecaster, Chronos2Forecaster
+from analytics.forecasting import ProphetForecaster, SimpleForecaster, Chronos2Forecaster
 from app.api.dependencies import get_db
-from schemas.forecast import INTERVAL_CONFIG, ForecastRequest, ForecastResponse
+from schemas.forecast import (
+    INTERVAL_CONFIG,
+    ForecastRequest,
+    ForecastResponse,
+    ForecastMetricsRequest,
+    ForecastMetricsResponse,
+    ModelMetricRow,
+    ModelBoundsRow,
+)
+from analytics.metrics import walk_forward_backtest_last_n_weeks
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -213,21 +222,10 @@ def _build_response(
 
 def _run_base(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     """Run SimpleForecaster synchronously (called inside thread pool)."""
+    # Use at least 60-day span so EWM is a smoothed "recent average", not overly tilted to last few weeks
+    span = min(max(req.lookback_window, 60), len(prices) - 1)
     model = SimpleForecaster(
-        span=min(req.lookback_window, len(prices) - 1),
-        confidence_level=req.confidence_level,
-    )
-    model.fit(prices)
-    result = model.forecast(periods=req.periods)
-    result["model_info"] = model.get_model_info()
-    return result
-
-
-def _run_lstm(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
-    """Run LSTMForecastor synchronously (called inside thread pool)."""
-    model = LSTMForecastor(
-        lookback_window=req.lookback_window,
-        epochs=req.epochs,
+        span=span,
         confidence_level=req.confidence_level,
     )
     model.fit(prices)
@@ -258,6 +256,22 @@ def _run_chronos2(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     result = model.forecast(periods=req.periods)
     result["model_info"] = model.get_model_info()
     return result
+
+
+def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, Any]:
+    """Run walk-forward backtest and bounds; called in thread pool."""
+    interval = req.interval if req.interval in ("1wk", "1mo") else "1wk"
+    raw = walk_forward_backtest_last_n_weeks(
+        prices,
+        interval=interval,
+        last_n_weeks=req.last_n_weeks,
+        lookback_window=req.lookback_window,
+        epochs=req.epochs,
+        confidence_level=req.confidence_level,
+        models=req.models,
+        bounds_horizon_periods=req.bounds_horizon_periods,
+    )
+    return raw
 
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
@@ -295,53 +309,6 @@ async def base_forecast(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Base forecast failed for %s", request.symbol)
-        raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
-
-    return _build_response(result, request, len(prices))
-
-
-@router.post(
-    "/lstm",
-    response_model=ForecastResponse,
-    summary="LSTM neural-network forecast",
-)
-async def lstm_forecast(
-    request: ForecastRequest,
-    db: Client = Depends(get_db),
-) -> ForecastResponse:
-    """
-    LSTM deep-learning forecast.
-
-    Requires TensorFlow (``pip install tensorflow``). Training runs in a
-    thread pool to avoid blocking the event loop.
-    Prices are fetched from the database by ``symbol``.
-
-    Args:
-        request: Symbol, interval, and forecast parameters.
-
-    Returns:
-        Point forecast with residual-based confidence bounds.
-
-    Raises:
-        HTTPException 503: TensorFlow not installed.
-        HTTPException 404: Symbol not synced yet.
-        HTTPException 422: Insufficient rows for the requested interval.
-    """
-    prices = await _fetch_prices(request.symbol, db)
-    _validate_interval_minimums(prices, request.interval, request.symbol)
-
-    loop = asyncio.get_event_loop()
-    try:
-        result = await loop.run_in_executor(_executor, _run_lstm, prices, request)
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="TensorFlow is not installed on this server. Use /forecast/base instead.",
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("LSTM forecast failed for %s", request.symbol)
         raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
 
     return _build_response(result, request, len(prices))
@@ -404,7 +371,7 @@ async def chronos2_forecast(
     loop = asyncio.get_running_loop()
     try:
         result = await loop.run_in_executor(_executor, _run_chronos2, prices, request)
-        return _build_response(result, request, n_points=len(prices))
+        return _build_response(result, request, len(prices))
     except ImportError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
@@ -412,3 +379,42 @@ async def chronos2_forecast(
     except Exception as exc:
         logger.exception("Chronos-2 forecast failed")
         raise HTTPException(status_code=500, detail=f"Forecast error: {exc}")
+
+
+@router.post(
+    "/metrics",
+    response_model=ForecastMetricsResponse,
+    summary="Walk-forward 1-step backtest (last 20 weeks) + forecast bounds",
+)
+async def forecast_metrics(
+    request: ForecastMetricsRequest,
+    db: Client = Depends(get_db),
+) -> ForecastMetricsResponse:
+    """
+    Run walk-forward 1-step backtest over the last N weeks and return
+    MAE/RMSE/MAPE per model plus forecast bounds for the Error Metrics
+    Comparison and Forecast Bounds panels.
+    """
+    prices = await _fetch_prices(request.symbol, db)
+    _validate_interval_minimums(prices, request.interval, request.symbol)
+
+    loop = asyncio.get_event_loop()
+    try:
+        raw = await loop.run_in_executor(
+            _executor, _run_metrics, prices, request,
+        )
+    except Exception as exc:
+        logger.exception("Metrics computation failed for %s", request.symbol)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    metrics_rows = [ModelMetricRow(**m) for m in raw.get("metrics", [])]
+    bounds_rows = [ModelBoundsRow(**b) for b in raw.get("bounds", [])]
+    return ForecastMetricsResponse(
+        symbol=request.symbol,
+        interval=request.interval,
+        last_n_weeks=raw.get("last_n_weeks", request.last_n_weeks),
+        bounds_horizon_weeks=raw.get("bounds_horizon_weeks", 12),
+        metrics=metrics_rows,
+        bounds=bounds_rows,
+        error=raw.get("error"),
+    )

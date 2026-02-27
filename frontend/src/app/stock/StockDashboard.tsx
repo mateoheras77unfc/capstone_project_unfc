@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AssetOut, PriceOut, StatsResponse } from "@/types/api";
+import {
+  AssetOut,
+  PriceOut,
+  StatsResponse,
+  ForecastMetricsResponse,
+  type ForecastModelKey,
+} from "@/types/api";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +19,8 @@ import { Loader2 } from "lucide-react";
 import { StockChart } from "./StockChart";
 import { TourButton } from "@/components/TourButton";
 import type { TourStep } from "@/hooks/use-shepherd-tour";
+
+const METRICS_MODEL_ORDER: ForecastModelKey[] = ["base", "prophet", "prophet_xgb"];
 
 const STOCK_TOUR_STEPS: TourStep[] = [
   {
@@ -35,7 +43,7 @@ const STOCK_TOUR_STEPS: TourStep[] = [
   {
     id: "model-select",
     title: "Forecast Model",
-    text: "Choose between three forecasting engines: Base (fast exponential smoothing), Prophet (trend + seasonality), or LSTM (deep learning neural network).",
+    text: "Choose between Base (fast exponential smoothing), Prophet (trend + seasonality), or Prophet + XGBoost.",
     attachTo: { element: "#tour-stock-model", on: "bottom" },
   },
   {
@@ -75,8 +83,16 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
 
   const [fromDate, setFromDate] = useState(initialFromDate || "");
   const [toDate, setToDate] = useState(initialToDate || "");
+  const [metrics, setMetrics] = useState<ForecastMetricsResponse | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [inProgressModels, setInProgressModels] = useState<ForecastModelKey[]>([]);
+  const [metricsInterval, setMetricsInterval] = useState<"1wk" | "1mo">("1wk");
+  const [forecastDays, setForecastDays] = useState<7 | 14 | 21>(7);
+  const [compareAll, setCompareAll] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ForecastModelKey>("base");
 
   const handleSelect = (symbol: string) => {
+    setMetrics(null);
     router.push(`/stock?symbol=${symbol}&from=${fromDate}&to=${toDate}`);
   };
 
@@ -103,6 +119,83 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
   };
 
   const stats = initialSymbol && initialStats?.individual?.[initialSymbol.toUpperCase()];
+
+  const handleLoadMetrics = async (modelFromChart?: ForecastModelKey) => {
+    if (!initialSymbol) return;
+    const symbol = initialSymbol.toUpperCase();
+    const boundsPeriods = metricsInterval === "1wk" ? forecastDays / 7 : 1;
+    const reqBase = {
+      symbol,
+      interval: metricsInterval,
+      last_n_weeks: 20,
+      bounds_horizon_periods: boundsPeriods,
+    };
+    const modelToLoad = modelFromChart ?? selectedModel;
+    if (modelFromChart != null) setSelectedModel(modelFromChart);
+
+    if (!compareAll) {
+      setMetricsLoading(true);
+      setInProgressModels([modelToLoad]);
+      setMetrics({ ...reqBase, last_n_weeks: 20, bounds_horizon_weeks: boundsPeriods, metrics: [], bounds: [], error: null });
+      try {
+        const res = await api.getForecastMetrics({
+          ...reqBase,
+          models: [modelToLoad],
+        });
+        setMetrics(res);
+        setInProgressModels([]);
+        toast({ title: "Metrics loaded", description: `${modelToLoad.replace("_", "+")} — walk-forward and bounds.` });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to load metrics";
+        toast({ title: "Metrics failed", description: msg, variant: "destructive" });
+        setInProgressModels([]);
+      } finally {
+        setMetricsLoading(false);
+      }
+      return;
+    }
+
+    setMetricsLoading(true);
+    setInProgressModels([...METRICS_MODEL_ORDER]);
+    setMetrics({
+      symbol,
+      interval: metricsInterval,
+      last_n_weeks: 20,
+      bounds_horizon_weeks: boundsPeriods,
+      metrics: [],
+      bounds: [],
+      error: null,
+    });
+
+    const results: ForecastMetricsResponse[] = [];
+    let completed = 0;
+    const total = METRICS_MODEL_ORDER.length;
+
+    METRICS_MODEL_ORDER.forEach((modelKey) => {
+      api
+        .getForecastMetrics({ ...reqBase, models: [modelKey] })
+        .then((res) => {
+          results.push(res);
+          setMetrics((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  metrics: [...prev.metrics, ...res.metrics],
+                  bounds: [...prev.bounds, ...res.bounds],
+                }
+              : prev
+          );
+        })
+        .finally(() => {
+          completed += 1;
+          setInProgressModels((prev) => prev.filter((m) => m !== modelKey));
+          if (completed === total) {
+            setMetricsLoading(false);
+            toast({ title: "Compare all complete", description: "Error metrics and bounds for all models loaded." });
+          }
+        });
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -162,11 +255,20 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Card id="tour-stock-chart">
-              <CardHeader>
+              <CardHeader className="pb-2">
                 <CardTitle>{initialSymbol.toUpperCase()} Price History & Forecast</CardTitle>
               </CardHeader>
               <CardContent>
-                <StockChart symbol={initialSymbol.toUpperCase()} initialPrices={initialPrices} />
+                <StockChart
+                  symbol={initialSymbol.toUpperCase()}
+                  initialPrices={initialPrices}
+                  forecastDays={forecastDays}
+                  setForecastDays={setForecastDays}
+                  compareAll={compareAll}
+                  setCompareAll={setCompareAll}
+                  onForecastComplete={(chartModel) => handleLoadMetrics(chartModel)}
+                  metricsLoading={metricsLoading}
+                />
               </CardContent>
             </Card>
           </div>
@@ -264,6 +366,145 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
               </CardContent>
             </Card>
           </div>
+        </div>
+      )}
+
+      {/* Error Metrics & Forecast Bounds — below chart, progressive display */}
+      {initialSymbol && initialPrices && initialPrices.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle>Error Metrics Comparison</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-muted-foreground mb-3 min-h-[2.5rem]">
+                Walk-forward 1-step backtest over the last 20 weeks. Lower values indicate better accuracy.
+                {compareAll
+                  ? " Compare all: each model loads as it finishes."
+                  : ` Single model (${selectedModel}): one request.`}
+              </p>
+              {metrics?.error && (
+                <p className="text-sm text-amber-600 dark:text-amber-400">{metrics.error}</p>
+              )}
+              {metrics && !metrics.error && metrics.metrics.length === 0 && inProgressModels.length === 0 && (
+                <p className="text-sm text-muted-foreground">No metrics computed (models may have failed).</p>
+              )}
+              {((metrics?.metrics.length ?? 0) > 0 || inProgressModels.length > 0) && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 font-medium">Model</th>
+                        <th className="text-right py-2 font-medium">MAE</th>
+                        <th className="text-right py-2 font-medium">RMSE</th>
+                        <th className="text-right py-2 font-medium">MAPE %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(compareAll
+                        ? METRICS_MODEL_ORDER
+                        : inProgressModels.length > 0
+                          ? inProgressModels
+                          : (metrics?.metrics ?? []).map((r) => r.model)
+                      ).map((modelKey) => {
+                        const row = metrics?.metrics.find((r) => r.model === modelKey);
+                        const loading = inProgressModels.includes(modelKey);
+                        return (
+                          <tr key={modelKey} className="border-b border-border/50">
+                            <td className="py-2 capitalize">{modelKey.replace("_", "+")}</td>
+                            {loading ? (
+                              <td className="text-right py-2" colSpan={3}>
+                                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  Loading…
+                                </span>
+                              </td>
+                            ) : row ? (
+                              <>
+                                <td className="text-right py-2">{row.mae.toFixed(2)}</td>
+                                <td className="text-right py-2">{row.rmse.toFixed(2)}</td>
+                                <td className="text-right py-2">{row.mape.toFixed(2)}%</td>
+                              </>
+                            ) : (
+                              <td colSpan={3} className="text-right py-2 text-muted-foreground">—</td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle>
+                Forecast Bounds ({metrics ? `${metrics.bounds_horizon_weeks} ${metrics.interval === "1mo" ? "month(s)" : "week(s)"}` : `${forecastDays} days`} horizon)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-muted-foreground mb-3 min-h-[2.5rem]">
+                Lowest expected price, highest expected price, and average forecast per model over the selected horizon.
+              </p>
+              {metrics && metrics.bounds.length === 0 && !metrics.error && inProgressModels.length === 0 && (
+                <p className="text-sm text-muted-foreground">Load metrics to see bounds (uses same horizon as chart).</p>
+              )}
+              {((metrics?.bounds.length ?? 0) > 0 || inProgressModels.length > 0) && (
+                <div className="overflow-x-auto space-y-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 font-medium">Model</th>
+                        <th className="text-right py-2 font-medium">Lowest expected</th>
+                        <th className="text-right py-2 font-medium">Highest expected</th>
+                        <th className="text-right py-2 font-medium">Average forecast</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(compareAll
+                        ? METRICS_MODEL_ORDER
+                        : inProgressModels.length > 0
+                          ? inProgressModels
+                          : (metrics?.bounds ?? []).map((b) => b.model)
+                      ).map((modelKey) => {
+                        const b = metrics?.bounds.find((x) => x.model === modelKey);
+                        const loading = inProgressModels.includes(modelKey);
+                        if (loading) {
+                          return (
+                            <tr key={modelKey} className="border-b border-border/50">
+                              <td className="py-2 capitalize">{modelKey.replace("_", "+")}</td>
+                              <td className="text-right py-2" colSpan={3}>
+                                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  Loading…
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        if (!b) return null;
+                        const lowest = b.lower.length ? Math.min(...b.lower) : 0;
+                        const highest = b.upper.length ? Math.max(...b.upper) : 0;
+                        const avg =
+                          b.forecast.length
+                            ? b.forecast.reduce((s, v) => s + v, 0) / b.forecast.length
+                            : 0;
+                        return (
+                          <tr key={b.model} className="border-b border-border/50">
+                            <td className="py-2 capitalize">{b.model.replace("_", "+")}</td>
+                            <td className="text-right py-2">${lowest.toFixed(2)}</td>
+                            <td className="text-right py-2">${highest.toFixed(2)}</td>
+                            <td className="text-right py-2 font-medium">${avg.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 

@@ -443,37 +443,3 @@ class TestAnalyzeRequestValidation:
         )
         assert resp.status_code == 422
 
-
-# ── ML model error propagation ────────────────────────────────────────────────
-
-
-class TestAnalyzeModelErrors:
-    """Tests for error handling in the forecast model step."""
-
-    async def test_503_lstm_without_tensorflow(
-        self, app_client, mock_db, price_rows_factory
-    ) -> None:
-        """
-        Requesting model='lstm' without TensorFlow installed should return 503.
-        Skipped automatically if TF is present in the environment.
-        """
-        try:
-            import tensorflow  # noqa: F401
-            pytest.skip("TensorFlow installed — skipping 503 test")
-        except ImportError:
-            pass
-
-        configure_analyze_mock(
-            mock_db,
-            first_asset_rows=[{"id": "abc-123"}],
-            second_asset_rows=[{"id": "abc-123"}],
-            price_rows=price_rows_factory(n=60),
-        )
-        with patch(_SYNC_PATCH):
-            resp = await app_client.post(
-                "/api/v1/analyze/AAPL",
-                json={"model": "lstm", "interval": "1wk"},
-            )
-
-        assert resp.status_code == 503
-        assert "TensorFlow" in resp.json()["detail"]

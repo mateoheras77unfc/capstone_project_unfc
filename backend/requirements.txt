@@ -94,7 +94,7 @@ chronos-forecasting>=2.0
 torch>=2.1
 accelerate>=0.26
 
-# ❌ TensorFlow on Render Web Services is fragile
+# TensorFlow on Render Web Services is fragile
 
 # Reasons:
 # Huge binary (~500+ MB install)
@@ -104,7 +104,7 @@ accelerate>=0.26
 # Often exceeds free-tier limits
 # Not designed for lightweight web dynos
 
-# ⚠️ SECOND ISSUE: Prophet ALSO heavy
+# SECOND ISSUE: Prophet ALSO heavy
 # prophet pulls:
 # cmdstanpy
 # pystan / cmdstan

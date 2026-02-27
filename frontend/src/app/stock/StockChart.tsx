@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PriceOut, AnalyzeResponse } from "@/types/api";
+import { PriceOut, ForecastResponse } from "@/types/api";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
@@ -50,7 +50,7 @@ export function StockChart({
 }: StockChartProps) {
   const [model, setModel] = useState<"base" | "prophet" | "prophet_xgb">("base");
   const [interval, setInterval] = useState<"1d" | "1wk" | "1mo">("1d");
-  const [forecast, setForecast] = useState<AnalyzeResponse | null>(null);
+  const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 

@@ -18,7 +18,7 @@ Design
 1. Prices are fetched from Supabase by ``symbol`` so models always train
    on verified, correctly-labelled data — not whatever the client sends.
 2. Minimum data-point requirements are enforced *per interval* before any
-   model training starts (52 rows for 1wk, 24 for 1mo).
+   model training starts (60 rows for 1d, 52 rows for 1wk, 24 for 1mo).
 3. Each response includes ``interval``, ``periods_ahead``, a human-readable
    ``forecast_horizon_label``, and ``data_points_used``.
 4. Model training is CPU/GPU-bound — offloaded to a thread-pool executor
@@ -54,6 +54,8 @@ def _horizon_label(periods: int, interval: str) -> str:
 
     Examples::
 
+        _horizon_label(10, "1d")  -> "10 days (~2 weeks ahead)"
+        _horizon_label(63, "1d")  -> "63 days (~3 months ahead)"
         _horizon_label(4,  "1wk") -> "4 weeks (~1 month ahead)"
         _horizon_label(13, "1wk") -> "13 weeks (~3 months ahead)"
         _horizon_label(52, "1wk") -> "52 weeks (~1.0 years ahead)"
@@ -63,7 +65,21 @@ def _horizon_label(periods: int, interval: str) -> str:
     cfg = INTERVAL_CONFIG[interval]
     unit = cfg["label_singular"] if periods == 1 else cfg["label_plural"]
 
-    if interval == "1wk":
+    if interval == "1d":
+        # Convert trading days to a calendar approximation (252 trading days ≈ 365 calendar days)
+        cal_days = periods * (365 / 252)
+        if cal_days >= 365:
+            years = cal_days / 365
+            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
+        elif cal_days >= 28:
+            months = round(cal_days / 30.44)
+            approx = f"~{months} month{'s' if months != 1 else ''} ahead"
+        elif cal_days >= 7:
+            weeks = round(cal_days / 7)
+            approx = f"~{weeks} week{'s' if weeks != 1 else ''} ahead"
+        else:
+            approx = "~days ahead"
+    elif interval == "1wk":
         months = periods / 4.33
         m = round(months)  # round first so 4 wks → 1 month, not "days"
         if m >= 12:
@@ -127,7 +143,8 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             db.table("historical_prices")
             .select("timestamp, close_price")
             .eq("asset_id", asset_id)
-            .order("timestamp", desc=False)
+            .order("timestamp", desc=True)   # newest first so limit captures recent data
+            .limit(2000)                       # ~8 years of daily bars; avoids Supabase 1 000-row default cap
             .execute()
         )
     except Exception as exc:
@@ -142,7 +159,7 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             ),
         )
 
-    rows = price_res.data
+    rows = list(reversed(price_res.data))  # restore chronological order (oldest → newest)
     index = pd.to_datetime([r["timestamp"] for r in rows], utc=True)
     values = [float(r["close_price"]) for r in rows]
     logger.info("Loaded %d price rows for %s", len(rows), symbol)

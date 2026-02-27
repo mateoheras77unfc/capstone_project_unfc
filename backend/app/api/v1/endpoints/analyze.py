@@ -151,7 +151,8 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             db.table("historical_prices")
             .select("timestamp, close_price")
             .eq("asset_id", asset_id)
-            .order("timestamp", desc=False)
+            .order("timestamp", desc=True)   # newest first so limit captures recent data
+            .limit(2000)                       # ~8 years of daily bars; avoids Supabase 1 000-row default cap
             .execute()
         )
     except Exception as exc:
@@ -163,7 +164,7 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             detail=f"Sync completed but produced no price rows for '{symbol}'.",
         )
 
-    rows = price_res.data
+    rows = list(reversed(price_res.data))  # restore chronological order (oldest → newest)
     index = pd.to_datetime([r["timestamp"] for r in rows], utc=True)
     values = [float(r["close_price"]) for r in rows]
     logger.info("Loaded %d price rows for %s", len(rows), symbol)

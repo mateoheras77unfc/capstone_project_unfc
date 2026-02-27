@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { OptimizeResponse, AssetOut } from "@/types/api";
@@ -211,13 +211,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
    * dark navy CSS-variable-driven theme (which renders invisibly in PDFs).
    */
   const handleExportPdf = async () => {
-    const el = targetRef.current as HTMLElement | null;
-    if (el) el.classList.add("pdf-mode");
-    try {
-      await toPDF();
-    } finally {
-      if (el) el.classList.remove("pdf-mode");
-    }
+    await toPDF();
   };
 
   return (

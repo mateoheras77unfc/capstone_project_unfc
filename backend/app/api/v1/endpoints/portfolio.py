@@ -131,7 +131,7 @@ async def _fetch_prices_for_symbol(
             price_query = price_query.lt(
                 "timestamp", (to_date + timedelta(days=1)).isoformat()
             )
-        price_res = price_query.order("timestamp", desc=False).execute()
+        price_res = price_query.order("timestamp", desc=True).limit(2000).execute()
     except Exception as exc:
         raise HTTPException(
             status_code=503,
@@ -157,8 +157,9 @@ async def _fetch_prices_for_symbol(
             ),
         )
 
-    index = pd.to_datetime([r["timestamp"] for r in price_res.data], utc=True)
-    values = [float(r["close_price"]) for r in price_res.data]
+    rows_chrono = list(reversed(price_res.data))  # restore chronological order
+    index = pd.to_datetime([r["timestamp"] for r in rows_chrono], utc=True)
+    values = [float(r["close_price"]) for r in rows_chrono]
     logger.info("Loaded %d price rows for %s", len(values), symbol)
     return pd.Series(values, index=index, name="close")
 

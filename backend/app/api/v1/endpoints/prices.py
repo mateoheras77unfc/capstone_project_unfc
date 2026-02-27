@@ -13,6 +13,7 @@ from datetime import date as Date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi_cache.decorator import cache
 from supabase import Client
 
 from app.api.dependencies import get_db
@@ -27,6 +28,7 @@ router = APIRouter()
     response_model=list[PriceOut],
     summary="Historical prices for a symbol",
 )
+@cache(expire=300)
 def get_prices(
     symbol: str,
     limit: int = Query(default=750, ge=1, le=2500, description="Max rows to return (newest first). Default 750 (~3 years daily). Hard cap 2 500."),

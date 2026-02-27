@@ -40,48 +40,61 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
   // Reverse prices to be chronological for the chart
   let baseData = [...initialPrices].reverse();
 
-  // Helper: group daily data by a key and return mean close per group
+  // Helper: group daily data by a key and return mean close per group.
+  // Returned array is sorted chronologically by first-seen key.
   function aggregateByKey(
     data: PriceOut[],
     keyFn: (d: Date) => string
   ): PriceOut[] {
+    const order: string[] = [];
     const groups: Record<string, { sum: number; count: number; first: PriceOut }> = {};
     data.forEach((p) => {
       const key = keyFn(new Date(p.timestamp));
       if (!groups[key]) {
         groups[key] = { sum: 0, count: 0, first: p };
+        order.push(key);
       }
       groups[key].sum += p.close_price;
       groups[key].count += 1;
     });
-    return Object.values(groups).map(({ sum, count, first }) => ({
-      ...first,
-      close_price: sum / count,
+    // Use insertion-order array to guarantee chronological output.
+    return order.map((key) => ({
+      ...groups[key].first,
+      close_price: groups[key].sum / groups[key].count,
     }));
   }
 
-  // Aggregate daily data into weekly or monthly means
+  // Returns a stable Monday-anchored ISO week string "YYYY-Www".
+  function isoWeekKey(d: Date): string {
+    // Copy date and shift to the nearest Monday (start of ISO week).
+    const day = new Date(d);
+    const dow = day.getUTCDay(); // 0=Sun … 6=Sat
+    const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday
+    day.setUTCDate(day.getUTCDate() + diff);
+    const yyyy = day.getUTCFullYear();
+    const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(day.getUTCDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`; // one key per calendar week
+  }
+
+  // Aggregate daily data into weekly or monthly means.
   if (interval === "1wk") {
-    baseData = aggregateByKey(baseData, (d) => {
-      // ISO week: year + week number
-      const jan1 = new Date(d.getFullYear(), 0, 1);
-      const week = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-      return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
-    });
+    baseData = aggregateByKey(baseData, isoWeekKey);
   } else if (interval === "1mo") {
     baseData = aggregateByKey(
       baseData,
-      (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      (d) =>
+        `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
     );
   }
 
   const chartData: Array<{
-    date: string;
+    date: string;   // raw ISO string — formatted on the fly for axis/tooltip
     price: number;
     lower?: number;
     upper?: number;
   }> = baseData.map((p) => ({
-    date: new Date(p.timestamp).toLocaleDateString(),
+    date: p.timestamp,  // keep raw ISO so tickFormatter can vary by interval
     price: p.close_price,
   }));
 
@@ -89,13 +102,41 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
   if (forecast) {
     forecast.dates.forEach((dateStr, i) => {
       chartData.push({
-        date: new Date(dateStr).toLocaleDateString(),
+        date: dateStr,
         price: forecast.point_forecast[i],
         lower: forecast.lower_bound[i],
         upper: forecast.upper_bound[i],
       });
     });
   }
+
+  // ── X-axis label format varies by interval ────────────────────────────
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  function formatXAxis(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const mon = MONTHS[d.getUTCMonth()];
+    const day = d.getUTCDate();
+    const yr  = String(d.getUTCFullYear()).slice(2); // "26"
+    if (interval === "1mo") return `${mon} '${yr}`;  // "Feb '26"
+    if (interval === "1wk") return `${mon} ${day}`;  // "Feb 23"
+    return `${mon} ${day}`;                           // "Feb 23" (daily)
+  }
+
+  function formatTooltipLabel(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const mon  = MONTHS[d.getUTCMonth()];
+    const day  = d.getUTCDate();
+    const year = d.getUTCFullYear();
+    if (interval === "1mo") return `${mon} ${year}`;
+    return `${mon} ${day}, ${year}`;
+  }
+
+  // Widen tick spacing for denser intervals so labels don't overlap.
+  const minTickGap = interval === "1d" ? 60 : interval === "1wk" ? 50 : 40;
 
   const handleAnalyze = async () => {
     setIsLoading(true);
@@ -172,7 +213,8 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
               tickLine={false}
               axisLine={false}
               tickMargin={8}
-              minTickGap={32}
+              minTickGap={minTickGap}
+              tickFormatter={formatXAxis}
             />
             <YAxis
               domain={["auto", "auto"]}
@@ -182,7 +224,16 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
             />
             <Tooltip
               formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]}
-              labelClassName="font-bold text-foreground"
+              labelFormatter={(label) => formatTooltipLabel(label)}
+              contentStyle={{
+                backgroundColor: "#0f172a",
+                border: "1px solid rgba(0,212,255,0.25)",
+                borderRadius: "8px",
+                color: "#f1f5f9",
+              }}
+              labelStyle={{ color: "#22d3ee", fontWeight: 700, marginBottom: 4 }}
+              itemStyle={{ color: "#f1f5f9" }}
+              cursor={{ stroke: "rgba(0,212,255,0.3)", strokeWidth: 1 }}
             />
             <Line
               type="monotone"

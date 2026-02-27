@@ -57,7 +57,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
   const [toDate, setToDate] = useState(today.toISOString().split('T')[0]);
 
   const [target, setTarget] = useState<
-    "max_sharpe" | "min_volatility" | "efficient_return" | "efficient_risk"
+    "max_sharpe" | "min_volatility" | "efficient_return" | "efficient_risk" | "hrp"
   >("max_sharpe");
   const [targetValue, setTargetValue] = useState<string>("");
   const [results, setResults] = useState<OptimizeResponse | null>(null);
@@ -269,6 +269,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                     <SelectItem value="min_volatility">Minimize Volatility</SelectItem>
                     <SelectItem value="efficient_return">Target Return</SelectItem>
                     <SelectItem value="efficient_risk">Target Volatility</SelectItem>
+                    <SelectItem value="hrp">Hierarchical Risk Parity</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

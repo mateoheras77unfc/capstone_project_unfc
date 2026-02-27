@@ -25,8 +25,9 @@ export default async function StockPage({
 
   if (upperSymbol) {
     try {
-      // Fetch initial prices (last 200 days)
-      prices = await api.getPrices(upperSymbol, 200);
+      // Fetch up to 10 years of daily data so Weekly and Monthly
+      // aggregations on the frontend are visually distinct from Daily.
+      prices = await api.getPrices(upperSymbol, 2500);
     } catch (e) {
       console.error("Failed to fetch prices:", e);
     }

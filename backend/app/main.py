@@ -29,6 +29,8 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 
 from app.api.v1.router import api_router
 from core.config import get_settings
@@ -65,6 +67,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.error("Supabase initialisation failed: %s", exc)
         raise
+
+    # Initialise in-memory response cache (avoids redundant Supabase queries).
+    FastAPICache.init(InMemoryBackend(), prefix="investanalytics-cache")
+    logger.info("In-memory cache initialised")
 
     yield  # ← application runs here
 

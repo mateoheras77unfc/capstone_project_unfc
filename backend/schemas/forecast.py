@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 # ---------------------------------------------------------------------------
 INTERVAL_CONFIG: Dict[str, Dict[str, Any]] = {
     "1d": {
-        "min_samples": 252,
+        "min_samples": 60,   # ~3 months of trading days — enough for valid stats
         "label_singular": "day",
         "label_plural": "days",
     },

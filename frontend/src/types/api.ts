@@ -79,7 +79,7 @@ export interface PortfolioBaseRequest {
 export interface StatsRequest extends PortfolioBaseRequest {}
 
 export interface OptimizeRequest extends PortfolioBaseRequest {
-  target?: "max_sharpe" | "min_volatility" | "efficient_return" | "efficient_risk";
+  target?: "max_sharpe" | "min_volatility" | "efficient_return" | "efficient_risk" | "hrp";
   target_return?: number | null;
   target_volatility?: number | null;
   n_frontier_points?: number;

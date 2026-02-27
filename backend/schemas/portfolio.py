@@ -28,8 +28,8 @@ class _PortfolioBase(BaseModel):
         max_length=10,
         description="2–10 ticker symbols that are already in the database.",
     )
-    interval: Literal["1wk", "1mo"] = Field(
-        default="1wk",
+    interval: Literal["1d", "1wk", "1mo"] = Field(
+        default="1d",
         description="Bar interval used when the data was synced.",
     )
     risk_free_rate: float = Field(
@@ -114,12 +114,14 @@ class OptimizeRequest(_PortfolioBase):
         "min_volatility",
         "efficient_return",
         "efficient_risk",
+        "hrp",
     ] = Field(
         default="max_sharpe",
         description=(
             "Optimization objective. "
             "'efficient_return' requires target_return. "
-            "'efficient_risk' requires target_volatility."
+            "'efficient_risk' requires target_volatility. "
+            "'hrp' uses Hierarchical Risk Parity (no target params needed)."
         ),
     )
     target_return: Optional[float] = Field(

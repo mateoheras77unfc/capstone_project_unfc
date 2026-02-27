@@ -225,22 +225,27 @@ def _optimize_worker(
     prices_df = pf.build_price_df(series_map)
 
     # ── Optimization ──────────────────────────────────────────────────────
-    opt = pf.optimize(
-        prices_df,
-        interval=request.interval,
-        target=request.target,
-        risk_free_rate=request.risk_free_rate,
-        target_return=request.target_return,
-        target_volatility=request.target_volatility,
-    )
-
-    # ── Efficient frontier ────────────────────────────────────────────────
-    frontier = pf.efficient_frontier_points(
-        prices_df,
-        interval=request.interval,
-        risk_free_rate=request.risk_free_rate,
-        n_points=request.n_frontier_points,
-    )
+    # HRP uses a distinct code path — no expected-return estimates needed.
+    if request.target == "hrp":
+        opt = pf.optimize_hrp(prices_df)
+        # HRP is a single-point solution; it has no efficient frontier.
+        frontier: list = []
+    else:
+        opt = pf.optimize(
+            prices_df,
+            interval=request.interval,
+            target=request.target,
+            risk_free_rate=request.risk_free_rate,
+            target_return=request.target_return,
+            target_volatility=request.target_volatility,
+        )
+        # ── Efficient frontier ────────────────────────────────────────────
+        frontier = pf.efficient_frontier_points(
+            prices_df,
+            interval=request.interval,
+            risk_free_rate=request.risk_free_rate,
+            n_points=request.n_frontier_points,
+        )
 
     # ── Portfolio-level risk metrics ──────────────────────────────────────
     # Build the weighted return series from the optimal weights.
@@ -372,6 +377,7 @@ async def portfolio_optimize(
     | ``min_volatility``   | Minimize portfolio volatility                       |
     | ``efficient_return`` | Minimize volatility for a target annual return      |
     | ``efficient_risk``   | Maximize return for a target annual volatility      |
+    | ``hrp``              | Hierarchical Risk Parity — cluster-based            |
 
     The response also includes ``n_frontier_points`` (default 30) portfolios
     along the efficient frontier and portfolio-level VaR / CVaR / drawdown.

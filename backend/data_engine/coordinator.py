@@ -95,19 +95,35 @@ class DataCoordinator:
             for _, row in df.iterrows()
         ]
 
-        # 4. Upsert (idempotent — duplicate timestamps are ignored).
-        logger.info("Upserting %d records for %s…", len(records), symbol)
+        # 4. Upsert in batches of 500 to stay within Supabase PostgREST's
+        #    HTTP body size limit. A single call with thousands of daily rows
+        #    exceeds the limit and results in silent truncation (~104 rows).
+        _BATCH_SIZE = 500
+        total_upserted = 0
+        logger.info(
+            "Upserting %d records for %s in batches of %d…",
+            len(records), symbol, _BATCH_SIZE,
+        )
         try:
-            db.table("historical_prices").upsert(
-                records, on_conflict="asset_id,timestamp"
-            ).execute()
+            for i in range(0, len(records), _BATCH_SIZE):
+                batch = records[i : i + _BATCH_SIZE]
+                db.table("historical_prices").upsert(
+                    batch, on_conflict="asset_id,timestamp"
+                ).execute()
+                total_upserted += len(batch)
+                logger.debug(
+                    "Batch %d/%d upserted (%d rows)",
+                    i // _BATCH_SIZE + 1,
+                    -(-len(records) // _BATCH_SIZE),
+                    len(batch),
+                )
 
             db.table("assets").update(
                 {"last_updated": datetime.utcnow().isoformat()}
             ).eq("id", asset_id).execute()
 
-            logger.info("Sync complete for %s (%d rows)", symbol, len(records))
-            return len(records)
+            logger.info("Sync complete for %s (%d rows)", symbol, total_upserted)
+            return total_upserted
         except Exception:
             logger.exception("Upsert failed for %s", symbol)
             raise

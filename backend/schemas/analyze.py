@@ -36,7 +36,7 @@ class AnalyzeRequest(BaseModel):
         confidence_level: Probability mass for the confidence interval.
     """
 
-    interval: Literal["1wk", "1mo"] = "1wk"
+    interval: Literal["1d", "1wk", "1mo"] = "1d"
     periods: int = Field(default=4, ge=1, le=52)
     model: Literal["base", "lstm", "prophet"] = "base"
     asset_type: Literal["stock", "crypto", "index"] = "stock"

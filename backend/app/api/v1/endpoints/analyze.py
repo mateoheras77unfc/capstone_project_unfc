@@ -70,16 +70,25 @@ def _horizon_label(periods: int, interval: str) -> str:
 
     Args:
         periods:  Number of future time steps.
-        interval: Bar interval (``"1wk"`` or ``"1mo"``).
+        interval: Bar interval (``"1d"``, ``"1wk"`` or ``"1mo"``).
 
     Returns:
-        Examples: ``"8 weeks (~2 months ahead)"``,
-                  ``"12 months (~1.0 years ahead)"``.
+        Examples: ``"30 days (~1 month ahead)"``,
+                  ``"8 weeks (~2 months ahead)"``.
     """
     cfg = INTERVAL_CONFIG[interval]
     unit = cfg["label_singular"] if periods == 1 else cfg["label_plural"]
 
-    if interval == "1wk":
+    if interval == "1d":
+        m = round(periods / 21)   # ~21 trading days per month
+        if m >= 12:
+            years = m / 12
+            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
+        elif m >= 1:
+            approx = f"~{m} month{'s' if m != 1 else ''} ahead"
+        else:
+            approx = f"~{periods} trading day{'s' if periods != 1 else ''} ahead"
+    elif interval == "1wk":
         m = round(periods / 4.33)
         if m >= 12:
             years = m / 12

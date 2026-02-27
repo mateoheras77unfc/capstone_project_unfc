@@ -33,13 +33,17 @@ export default async function StockPage({
     }
 
     try {
-      // Fetch portfolio stats for this single asset + GOOG to bypass validation
-      const symbols = upperSymbol === "GOOG" ? ["GOOG", "AAPL"] : [upperSymbol, "GOOG"];
-      stats = await api.portfolioStats({ 
-        symbols,
-        from_date: fromDate,
-        to_date: toDate
-      });
+      // Pick a partner symbol dynamically from the DB instead of hardcoding
+      // AAPL/GOOG — those may not exist after a DB truncation + re-sync.
+      const partner = assets.find((a) => a.symbol !== upperSymbol)?.symbol;
+      if (partner) {
+        stats = await api.portfolioStats({
+          symbols: [upperSymbol, partner],
+          interval: "1d",
+          from_date: fromDate,
+          to_date: toDate,
+        });
+      }
     } catch (e) {
       console.error("Failed to fetch stats:", e);
     }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "shepherd.js/dist/css/shepherd.css";
 import { LocalEnvBanner } from "@/components/LocalEnvBanner";
 import { Toaster } from "@/components/ui/toaster";
 import { NavBar } from "@/components/NavBar";

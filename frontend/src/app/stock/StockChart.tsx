@@ -166,42 +166,48 @@ export function StockChart({ symbol, initialPrices }: StockChartProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex gap-2">
-          <Select
-            value={model}
-            onValueChange={(val: any) => setModel(val)}
-          >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Select Model" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="base">Base (EWM)</SelectItem>
-              <SelectItem value="prophet">Prophet</SelectItem>
-              <SelectItem value="lstm">LSTM</SelectItem>
-            </SelectContent>
-          </Select>
+          <div id="tour-stock-model">
+            <Select
+              value={model}
+              onValueChange={(val: any) => setModel(val)}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Select Model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="base">Base (EWM)</SelectItem>
+                <SelectItem value="prophet">Prophet</SelectItem>
+                <SelectItem value="lstm">LSTM</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select
-            value={interval}
-            onValueChange={(val: any) => {
-              setInterval(val);
-              setForecast(null);
-            }}
-          >
-            <SelectTrigger className="w-[120px]">
-              <SelectValue placeholder="Interval" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1d">Daily</SelectItem>
-              <SelectItem value="1wk">Weekly</SelectItem>
-              <SelectItem value="1mo">Monthly</SelectItem>
-            </SelectContent>
-          </Select>
+          <div id="tour-stock-interval">
+            <Select
+              value={interval}
+              onValueChange={(val: any) => {
+                setInterval(val);
+                setForecast(null);
+              }}
+            >
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="Interval" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1d">Daily</SelectItem>
+                <SelectItem value="1wk">Weekly</SelectItem>
+                <SelectItem value="1mo">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        <Button onClick={handleAnalyze} disabled={isLoading}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Generate Forecast
-        </Button>
+        <div id="tour-stock-forecast-btn">
+          <Button onClick={handleAnalyze} disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Generate Forecast
+          </Button>
+        </div>
       </div>
 
       <div className="h-[400px] w-full mt-4">

@@ -70,3 +70,176 @@
     --radius: 0.625rem;
   }
 }
+
+/* ── Shepherd.js dark navy / cyan theme ─────────────────────────── */
+.shepherd-element {
+  background: #0d1b2e !important;
+  border: 1px solid rgba(34, 211, 238, 0.25) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(34, 211, 238, 0.08) !important;
+  max-width: 360px !important;
+}
+
+.shepherd-has-title .shepherd-content .shepherd-header {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.15) !important;
+  padding: 14px 16px 10px !important;
+}
+
+.shepherd-title {
+  color: #22d3ee !important;
+  font-size: 0.9rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.shepherd-text {
+  color: #cbd5e1 !important;
+  font-size: 0.85rem !important;
+  line-height: 1.65 !important;
+  padding: 12px 16px !important;
+}
+
+.shepherd-footer {
+  border-top: 1px solid rgba(34, 211, 238, 0.15) !important;
+  padding: 10px 16px !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  background: transparent !important;
+}
+
+.shepherd-btn-primary {
+  background: #22d3ee !important;
+  color: #0b1628 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  padding: 6px 14px !important;
+  cursor: pointer !important;
+  transition: background 0.15s !important;
+}
+.shepherd-btn-primary:hover { background: #06b6d4 !important; }
+
+.shepherd-btn-secondary {
+  background: transparent !important;
+  color: #94a3b8 !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  border-radius: 6px !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  padding: 6px 14px !important;
+  cursor: pointer !important;
+  transition: all 0.15s !important;
+}
+.shepherd-btn-secondary:hover {
+  color: #e2e8f0 !important;
+  border-color: rgba(148, 163, 184, 0.55) !important;
+}
+
+.shepherd-cancel-icon { color: #64748b !important; }
+.shepherd-cancel-icon:hover { color: #94a3b8 !important; }
+
+.shepherd-arrow:before {
+  background: #0d1b2e !important;
+  border-color: rgba(34, 211, 238, 0.2) !important;
+}
+
+.shepherd-modal-overlay-container { fill: rgba(0, 0, 0, 0.55) !important; }
+
+/* ── PDF export — white light-mode snapshot ─────────────────────────── */
+/* Applied momentarily via JS before toPDF() capture, then removed.      */
+.pdf-mode,
+.pdf-mode * {
+  color-scheme: light !important;
+}
+
+.pdf-mode {
+  background: #ffffff !important;
+  color: #111827 !important;
+  padding: 24px !important;
+}
+
+/* Cards & containers */
+.pdf-mode [class*="rounded"],
+.pdf-mode [class*="Card"],
+.pdf-mode [class*="card"],
+.pdf-mode .border {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Muted/accent backgrounds */
+.pdf-mode [class*="bg-muted"],
+.pdf-mode [class*="bg-cyan"],
+.pdf-mode [class*="bg-slate"] {
+  background: #f1f5f9 !important;
+}
+
+/* Text */
+.pdf-mode .text-muted-foreground,
+.pdf-mode [class*="text-muted"] {
+  color: #64748b !important;
+}
+.pdf-mode .text-white           { color: #111827 !important; }
+.pdf-mode .text-foreground       { color: #111827 !important; }
+.pdf-mode .text-cyan-400,
+.pdf-mode .text-cyan-300         { color: #0369a1 !important; }
+.pdf-mode .text-red-500          { color: #dc2626 !important; }
+.pdf-mode .text-green-500        { color: #16a34a !important; }
+.pdf-mode .font-bold,
+.pdf-mode .font-semibold,
+.pdf-mode .font-medium           { color: #111827 !important; }
+
+/* Headings inside cards */
+.pdf-mode h1, .pdf-mode h2,
+.pdf-mode h3, .pdf-mode h4      { color: #0f172a !important; }
+
+/* Tables */
+.pdf-mode table                  { border-collapse: collapse !important; }
+.pdf-mode thead tr               { background: #f8fafc !important; }
+.pdf-mode tbody tr               { background: #ffffff !important; }
+.pdf-mode th, .pdf-mode td       {
+  color: #111827 !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Borders */
+.pdf-mode .border-b,
+.pdf-mode [class*="border"]      { border-color: #e2e8f0 !important; }
+
+/* Beta / stat tiles */
+.pdf-mode [class*="bg-muted/20"] { background: #f8fafc !important; }
+.pdf-mode [class*="bg-muted/40"] { background: #f1f5f9 !important; }
+.pdf-mode [class*="bg-muted/50"] { background: #f1f5f9 !important; }
+
+/* Recharts — pie labels & legend */
+.pdf-mode .recharts-text         { fill: #111827 !important; }
+.pdf-mode .recharts-legend-item-text { color: #111827 !important; }
+
+/* Input fields — hide interactive widgets */
+.pdf-mode input,
+.pdf-mode button                 { display: none !important; }
+
+/* Investment allocation bars */
+.pdf-mode .h-2                   { background: #e2e8f0 !important; }
+
+/* PDF report header — hidden in the live app, shown during PDF capture */
+.pdf-report-header               { display: none; }
+.pdf-mode .pdf-report-header     { display: block !important; }
+
+/* Step progress bar injected into .shepherd-text */
+.shepherd-progress-bar {
+  height: 3px;
+  background: rgba(34, 211, 238, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.shepherd-progress-fill {
+  height: 100%;
+  background: #22d3ee;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}

@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, X, DollarSign, TrendingUp } from "lucide-react";
+import { Loader2, X, DollarSign, TrendingUp, FileDown } from "lucide-react";
 import {
   PieChart,
   Pie,
@@ -24,6 +24,10 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { usePDF } from "react-to-pdf";
+import Image from "next/image";
+import { TourButton } from "@/components/TourButton";
+import type { TourStep } from "@/hooks/use-shepherd-tour";
 
 const COLORS = [
   "#0088FE",
@@ -36,6 +40,44 @@ const COLORS = [
   "#D0ED57",
   "#F2C80F",
   "#FF6666",
+];
+
+const PORTFOLIO_TOUR_STEPS: TourStep[] = [
+  {
+    id: "welcome",
+    title: "Welcome to Portfolio Builder 💼",
+    text: "Build and optimise a multi-asset portfolio using Modern Portfolio Theory and Hierarchical Risk Parity. This tour walks you through every control.",
+  },
+  {
+    id: "asset-select",
+    title: "Select Assets",
+    text: "Pick stocks already in our database from this dropdown. You can add up to 10 symbols to your portfolio at once.",
+    attachTo: { element: "#tour-portfolio-assets", on: "right" },
+  },
+  {
+    id: "fetch-new",
+    title: "Fetch a New Stock",
+    text: "Type any valid ticker and hit Sync to pull full daily history from Yahoo Finance. The new stock will be added instantly.",
+    attachTo: { element: "#tour-portfolio-fetch", on: "right" },
+  },
+  {
+    id: "objective",
+    title: "Optimisation Objective",
+    text: "Choose your goal: maximise Sharpe Ratio, minimise Volatility, hit a Target Return or Volatility, or use Hierarchical Risk Parity (HRP) — a cluster-based method that needs no covariance inversion.",
+    attachTo: { element: "#tour-portfolio-objective", on: "right" },
+  },
+  {
+    id: "run-btn",
+    title: "Run Optimisation",
+    text: "Click this to compute the efficient weights, expected return, and Sharpe ratio using PyPortfolioOpt on the backend.",
+    attachTo: { element: "#tour-portfolio-run", on: "top" },
+  },
+  {
+    id: "results",
+    title: "Results Panel",
+    text: "Once optimised, you'll see the weight donut chart, investment allocation calculator, individual asset stats, correlation matrix, covariance matrix, and beta rankings — everything you need for your report!",
+    attachTo: { element: "#tour-portfolio-results", on: "left" },
+  },
 ];
 
 interface PortfolioBuilderProps {
@@ -63,8 +105,13 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
   const [results, setResults] = useState<OptimizeResponse | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [investAmount, setInvestAmount] = useState<string>("");
+  const [investAmount, setInvestAmount] = useState<string>("10000");
   const { toast } = useToast();
+
+  const { toPDF, targetRef } = usePDF({
+    filename: `portfolio-${symbols.join("-")}-${new Date().toISOString().split("T")[0]}.pdf`,
+    page: { format: "a4", orientation: "portrait", margin: 10 },
+  });
 
   const handleAddSymbol = (sym: string) => {
     if (sym && !symbols.includes(sym)) {
@@ -158,13 +205,44 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
       }))
     : [];
 
+  /**
+   * Temporarily apply a light-mode class to the target element so that
+   * react-to-pdf captures white backgrounds + dark text instead of the
+   * dark navy CSS-variable-driven theme (which renders invisibly in PDFs).
+   */
+  const handleExportPdf = async () => {
+    const el = targetRef.current as HTMLElement | null;
+    if (el) el.classList.add("pdf-mode");
+    try {
+      await toPDF();
+    } finally {
+      if (el) el.classList.remove("pdf-mode");
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Portfolio Builder</h1>
-        <p className="text-muted-foreground">
-          Construct and optimize your investment portfolio.
-        </p>
+      {/* ── Page header + action buttons ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Portfolio Builder</h1>
+          <p className="text-muted-foreground">
+            Construct and optimize your investment portfolio.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {results && (
+            <Button
+              variant="outline"
+              onClick={handleExportPdf}
+              className="flex items-center gap-2 h-10 px-4 border-emerald-400/40 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400 hover:text-emerald-300 transition-all font-medium"
+            >
+              <FileDown className="h-4 w-4 shrink-0" />
+              Download PDF
+            </Button>
+          )}
+          <TourButton tourKey="tour-portfolio" steps={PORTFOLIO_TOUR_STEPS} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -174,7 +252,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
               <CardTitle>Assets</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
+              <div id="tour-portfolio-assets" className="space-y-2">
                 <label className="text-sm font-medium">Select from Database</label>
                 <Select onValueChange={(val) => handleAddSymbol(val)}>
                   <SelectTrigger>
@@ -190,7 +268,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                 </Select>
               </div>
 
-              <div className="space-y-2">
+              <div id="tour-portfolio-fetch" className="space-y-2">
                 <label className="text-sm font-medium">Fetch New Stock</label>
                 <div className="flex gap-2">
                   <Input
@@ -255,7 +333,7 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div id="tour-portfolio-objective" className="space-y-2">
                 <label className="text-sm font-medium">Objective</label>
                 <Select
                   value={target}
@@ -302,21 +380,127 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
                 </div>
               )}
 
-              <Button
-                className="w-full"
-                onClick={handleOptimize}
-                disabled={isLoading || symbols.length < 2}
-              >
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Run Optimization
-              </Button>
+              <div id="tour-portfolio-run">
+                <Button
+                  className="w-full"
+                  onClick={handleOptimize}
+                  disabled={isLoading || symbols.length < 2}
+                >
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Run Optimization
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
+        <div id="tour-portfolio-results" ref={targetRef} className="lg:col-span-2 space-y-6">
           {results ? (
             <>
+              {/* PDF-only header — hidden in the app, shown during PDF capture */}
+              <div className="pdf-report-header hidden">
+
+                {/* ── Brand bar: logo left, mascot right ── */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <Image
+                      src="/unf-logo.svg"
+                      alt="UNF Logo"
+                      width={52}
+                      height={52}
+                      style={{ objectFit: "contain" }}
+                      unoptimized
+                    />
+                    <div>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#0369a1", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                        University of North Florida
+                      </div>
+                      <div style={{ fontSize: "9px", color: "#64748b", marginTop: "1px" }}>Department of Finance &amp; Economics</div>
+                      <div style={{ fontSize: "9px", color: "#94a3b8" }}>UNF Investor Analytics Platform</div>
+                    </div>
+                  </div>
+                  <Image
+                    src="/agent-avatar.png"
+                    alt="Spark — UNF Investor mascot"
+                    width={62}
+                    height={62}
+                    style={{ borderRadius: "50%", border: "2.5px solid #0369a1", objectFit: "cover" }}
+                    unoptimized
+                  />
+                </div>
+
+                {/* ── Main title ── */}
+                <div style={{ marginBottom: "16px", borderLeft: "4px solid #0369a1", paddingLeft: "12px" }}>
+                  <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", margin: "0 0 3px" }}>
+                    Portfolio Optimization Report
+                  </h1>
+                  <p style={{ fontSize: "12px", color: "#475569", margin: 0 }}>
+                    Quantitative multi-asset analysis · powered by PyPortfolioOpt &amp; Yahoo Finance
+                  </p>
+                </div>
+
+                {/* ── Metadata grid ── */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "8px 16px",
+                  background: "#f1f5f9",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  marginBottom: "18px",
+                  border: "1px solid #e2e8f0",
+                }}>
+                  <div>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Generated</div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>
+                      {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Portfolio Assets</div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{symbols.join(" · ")}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Objective</div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{
+                      target === "max_sharpe"      ? "Maximize Sharpe Ratio"
+                      : target === "min_volatility" ? "Minimize Volatility"
+                      : target === "efficient_return" ? "Target Return"
+                      : target === "efficient_risk"   ? "Target Volatility"
+                      : "Hierarchical Risk Parity"
+                    }</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Date Range</div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{fromDate} → {toDate}</div>
+                  </div>
+                  {results?.expected_return != null && (
+                    <div>
+                      <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Expected Return</div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>{(results.expected_return * 100).toFixed(2)}%</div>
+                    </div>
+                  )}
+                  {results?.volatility != null && (
+                    <div>
+                      <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Portfolio Volatility</div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#dc2626" }}>{(results.volatility * 100).toFixed(2)}%</div>
+                    </div>
+                  )}
+                  {results?.sharpe_ratio != null && (
+                    <div>
+                      <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Sharpe Ratio</div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>{results.sharpe_ratio?.toFixed(4)}</div>
+                    </div>
+                  )}
+                </div>
+
+                <hr style={{ borderColor: "#cbd5e1", margin: "0 0 10px" }} />
+                <p style={{ fontSize: "9px", color: "#94a3b8", margin: "0 0 14px", fontStyle: "italic" }}>
+                  ⚠ This report is auto-generated by UNF Investor for academic and informational purposes only.
+                  It does not constitute financial advice. Data sourced from Yahoo Finance via yfinance.
+                </p>
+
+              </div>
               <Card>
                 <CardHeader>
                   <CardTitle>Optimal Weights</CardTitle>

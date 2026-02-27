@@ -11,6 +11,52 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { StockChart } from "./StockChart";
+import { TourButton } from "@/components/TourButton";
+import type { TourStep } from "@/hooks/use-shepherd-tour";
+
+const STOCK_TOUR_STEPS: TourStep[] = [
+  {
+    id: "welcome",
+    title: "Welcome to Stock Analysis 📈",
+    text: "This page lets you explore price history, generate forecasts with AI models, and view risk metrics. Let's take a quick tour!",
+  },
+  {
+    id: "asset-selector",
+    title: "Pick a Stock",
+    text: "Use this dropdown to select any asset already in our database. All stocks have historical daily price data synced automatically.",
+    attachTo: { element: "#tour-stock-selector", on: "bottom" },
+  },
+  {
+    id: "fetch-new",
+    title: "Fetch a New Ticker",
+    text: "Don't see your stock? Type any valid ticker symbol here and hit Sync — we'll pull its full price history from Yahoo Finance and add it to the database.",
+    attachTo: { element: "#tour-stock-fetch", on: "bottom" },
+  },
+  {
+    id: "model-select",
+    title: "Forecast Model",
+    text: "Choose between three forecasting engines: Base (fast exponential smoothing), Prophet (trend + seasonality), or LSTM (deep learning neural network).",
+    attachTo: { element: "#tour-stock-model", on: "bottom" },
+  },
+  {
+    id: "interval-select",
+    title: "Chart Interval",
+    text: "Switch between Daily, Weekly, and Monthly views. All data is stored at daily granularity and aggregated on-the-fly — no extra API calls needed!",
+    attachTo: { element: "#tour-stock-interval", on: "bottom" },
+  },
+  {
+    id: "forecast-btn",
+    title: "Generate Forecast",
+    text: "Click here to run the selected model and overlay a forecast (with confidence bands) directly on the price chart. Horizons are calculated automatically.",
+    attachTo: { element: "#tour-stock-forecast-btn", on: "top" },
+  },
+  {
+    id: "stats-panel",
+    title: "Risk & Return Metrics",
+    text: "On the right you'll find key statistics: Sharpe Ratio, Max Drawdown, Annualised Volatility, Skewness and more — all calculated from real historical returns.",
+    attachTo: { element: "#tour-stock-stats", on: "left" },
+  },
+];
 
 interface StockDashboardProps {
   assets: AssetOut[];
@@ -60,8 +106,22 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
 
   return (
     <div className="space-y-6">
+      {/* ── Page header + Tour button (tour only shown once a stock is selected) ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Stock Analysis</h1>
+          <p className="text-muted-foreground">
+            Explore price history, generate AI forecasts, and review risk metrics.
+          </p>
+        </div>
+        {initialSymbol && (
+          <TourButton tourKey="tour-stock" steps={STOCK_TOUR_STEPS} />
+        )}
+      </div>
+
+      {/* ── Stock selector / fetch toolbar ── */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-muted/50 p-4 rounded-lg border">
-        <div className="flex items-center gap-4 w-full md:w-auto">
+        <div id="tour-stock-selector" className="flex items-center gap-4 w-full md:w-auto">
           <span className="font-medium whitespace-nowrap">Select Stock:</span>
           <Select value={initialSymbol} onValueChange={handleSelect}>
             <SelectTrigger className="w-[200px] bg-background">
@@ -77,7 +137,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div id="tour-stock-fetch" className="flex items-center gap-2 w-full md:w-auto">
           <span className="font-medium whitespace-nowrap">Fetch New:</span>
           <Input
             placeholder="Ticker (e.g. TSLA)"
@@ -101,7 +161,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
       {initialSymbol && initialPrices && initialPrices.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <Card>
+            <Card id="tour-stock-chart">
               <CardHeader>
                 <CardTitle>{initialSymbol.toUpperCase()} Price History & Forecast</CardTitle>
               </CardHeader>
@@ -112,7 +172,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
           </div>
 
           <div className="space-y-6">
-            <Card>
+            <Card id="tour-stock-stats">
               <CardHeader className="pb-4">
                 <CardTitle>Portfolio Stats</CardTitle>
               </CardHeader>

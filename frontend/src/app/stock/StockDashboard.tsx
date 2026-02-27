@@ -408,7 +408,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
                           : (metrics?.metrics ?? []).map((r) => r.model)
                       ).map((modelKey) => {
                         const row = metrics?.metrics.find((r) => r.model === modelKey);
-                        const loading = inProgressModels.includes(modelKey);
+                        const loading = inProgressModels.includes(modelKey as ForecastModelKey);
                         return (
                           <tr key={modelKey} className="border-b border-border/50">
                             <td className="py-2 capitalize">{modelKey.replace("_", "+")}</td>
@@ -469,7 +469,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
                           : (metrics?.bounds ?? []).map((b) => b.model)
                       ).map((modelKey) => {
                         const b = metrics?.bounds.find((x) => x.model === modelKey);
-                        const loading = inProgressModels.includes(modelKey);
+                        const loading = inProgressModels.includes(modelKey as ForecastModelKey);
                         if (loading) {
                           return (
                             <tr key={modelKey} className="border-b border-border/50">

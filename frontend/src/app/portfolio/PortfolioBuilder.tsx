@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { OptimizeResponse, AssetOut } from "@/types/api";
@@ -25,7 +25,6 @@ import {
   Legend,
 } from "recharts";
 import { usePDF } from "react-to-pdf";
-import Image from "next/image";
 import { TourButton } from "@/components/TourButton";
 import type { TourStep } from "@/hooks/use-shepherd-tour";
 
@@ -205,11 +204,6 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
       }))
     : [];
 
-  /**
-   * Temporarily apply a light-mode class to the target element so that
-   * react-to-pdf captures white backgrounds + dark text instead of the
-   * dark navy CSS-variable-driven theme (which renders invisibly in PDFs).
-   */
   const handleExportPdf = async () => {
     await toPDF();
   };
@@ -388,113 +382,9 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
           </Card>
         </div>
 
-        <div id="tour-portfolio-results" ref={targetRef} className="lg:col-span-2 space-y-6">
+        <div id="tour-portfolio-results" className="lg:col-span-2 space-y-6">
           {results ? (
             <>
-              {/* PDF-only header — hidden in the app, shown during PDF capture */}
-              <div className="pdf-report-header hidden">
-
-                {/* ── Brand bar: logo left, mascot right ── */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <Image
-                      src="/unf-logo.svg"
-                      alt="UNF Logo"
-                      width={52}
-                      height={52}
-                      style={{ objectFit: "contain" }}
-                      unoptimized
-                    />
-                    <div>
-                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#0369a1", letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                        University of North Florida
-                      </div>
-                      <div style={{ fontSize: "9px", color: "#64748b", marginTop: "1px" }}>Department of Finance &amp; Economics</div>
-                      <div style={{ fontSize: "9px", color: "#94a3b8" }}>UNF Investor Analytics Platform</div>
-                    </div>
-                  </div>
-                  <Image
-                    src="/agent-avatar.png"
-                    alt="Spark — UNF Investor mascot"
-                    width={62}
-                    height={62}
-                    style={{ borderRadius: "50%", border: "2.5px solid #0369a1", objectFit: "cover" }}
-                    unoptimized
-                  />
-                </div>
-
-                {/* ── Main title ── */}
-                <div style={{ marginBottom: "16px", borderLeft: "4px solid #0369a1", paddingLeft: "12px" }}>
-                  <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", margin: "0 0 3px" }}>
-                    Portfolio Optimization Report
-                  </h1>
-                  <p style={{ fontSize: "12px", color: "#475569", margin: 0 }}>
-                    Quantitative multi-asset analysis · powered by PyPortfolioOpt &amp; Yahoo Finance
-                  </p>
-                </div>
-
-                {/* ── Metadata grid ── */}
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: "8px 16px",
-                  background: "#f1f5f9",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  marginBottom: "18px",
-                  border: "1px solid #e2e8f0",
-                }}>
-                  <div>
-                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Generated</div>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>
-                      {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Portfolio Assets</div>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{symbols.join(" · ")}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Objective</div>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{
-                      target === "max_sharpe"      ? "Maximize Sharpe Ratio"
-                      : target === "min_volatility" ? "Minimize Volatility"
-                      : target === "efficient_return" ? "Target Return"
-                      : target === "efficient_risk"   ? "Target Volatility"
-                      : "Hierarchical Risk Parity"
-                    }</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Date Range</div>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>{fromDate} → {toDate}</div>
-                  </div>
-                  {results?.performance?.expected_return != null && (
-                    <div>
-                      <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Expected Return</div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>{(results.performance.expected_return * 100).toFixed(2)}%</div>
-                    </div>
-                  )}
-                  {results?.performance?.volatility != null && (
-                    <div>
-                      <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Portfolio Volatility</div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#dc2626" }}>{(results.performance.volatility * 100).toFixed(2)}%</div>
-                    </div>
-                  )}
-                  {results?.performance?.sharpe_ratio != null && (
-                    <div>
-                      <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "2px" }}>Sharpe Ratio</div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>{results.performance.sharpe_ratio?.toFixed(4)}</div>
-                    </div>
-                  )}
-                </div>
-
-                <hr style={{ borderColor: "#cbd5e1", margin: "0 0 10px" }} />
-                <p style={{ fontSize: "9px", color: "#94a3b8", margin: "0 0 14px", fontStyle: "italic" }}>
-                  ⚠ This report is auto-generated by UNF Investor for academic and informational purposes only.
-                  It does not constitute financial advice. Data sourced from Yahoo Finance via yfinance.
-                </p>
-
-              </div>
               <Card>
                 <CardHeader>
                   <CardTitle>Optimal Weights</CardTitle>
@@ -753,6 +643,370 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
           )}
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════
+          DEDICATED OFF-SCREEN PDF REPORT — captured by react-to-pdf
+          Completely separate white A4 layout, no dark CSS vars.
+      ═══════════════════════════════════════════════════════════ */}
+      {results && (
+        <div
+          ref={targetRef}
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: 0,
+            width: "794px",
+            backgroundColor: "#ffffff",
+            fontFamily: "'Segoe UI', Arial, sans-serif",
+            color: "#0f172a",
+            padding: "40px 48px",
+            fontSize: "12px",
+            lineHeight: "1.6",
+          }}
+        >
+          {/* ── PAGE 1: Cover / Header ── */}
+          {/* Brand bar */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px", borderBottom: "3px solid #1e3a5f", paddingBottom: "20px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/unf-logo.svg" alt="UNFC Logo" width={60} height={60} style={{ objectFit: "contain" }} />
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 800, color: "#1e3a5f", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  University of Niagara Falls Canada
+                </div>
+                <div style={{ fontSize: "10px", color: "#475569", marginTop: "2px" }}>School of Business &amp; Technology</div>
+                <div style={{ fontSize: "10px", color: "#64748b" }}>UNFC Investor Analytics Platform</div>
+              </div>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/agent-avatar.png" alt="Spark mascot" width={68} height={68}
+              style={{ borderRadius: "50%", border: "3px solid #1e3a5f", objectFit: "cover" }} />
+          </div>
+
+          {/* Main title block */}
+          <div style={{ marginBottom: "22px", borderLeft: "5px solid #1e3a5f", paddingLeft: "16px" }}>
+            <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>
+              Portfolio Optimization Report
+            </div>
+            <div style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
+              Quantitative multi-asset analysis · Powered by PyPortfolioOpt &amp; Yahoo Finance
+            </div>
+          </div>
+
+          {/* Metadata summary grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", backgroundColor: "#f8fafc", borderRadius: "8px", padding: "16px 20px", marginBottom: "28px", border: "1px solid #e2e8f0" }}>
+            <div>
+              <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Generated</div>
+              <div style={{ fontSize: "12px", fontWeight: 600 }}>{new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Portfolio Assets</div>
+              <div style={{ fontSize: "12px", fontWeight: 600 }}>{symbols.join(" · ")}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Optimisation Objective</div>
+              <div style={{ fontSize: "12px", fontWeight: 600 }}>
+                {target === "max_sharpe" ? "Maximize Sharpe Ratio"
+                  : target === "min_volatility" ? "Minimize Volatility"
+                  : target === "efficient_return" ? "Target Return"
+                  : target === "efficient_risk" ? "Target Volatility"
+                  : "Hierarchical Risk Parity"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Analysis Period</div>
+              <div style={{ fontSize: "12px", fontWeight: 600 }}>{fromDate} → {toDate}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Number of Assets</div>
+              <div style={{ fontSize: "12px", fontWeight: 600 }}>{symbols.length} securities</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Data Source</div>
+              <div style={{ fontSize: "12px", fontWeight: 600 }}>Yahoo Finance (yfinance)</div>
+            </div>
+          </div>
+
+          {/* ── SECTION 1: Portfolio Performance KPIs ── */}
+          <div style={{ marginBottom: "8px" }}>
+            <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a5f", borderBottom: "2px solid #1e3a5f", paddingBottom: "4px", marginBottom: "8px" }}>
+              1. Portfolio Performance Indicators
+            </div>
+            <div style={{ fontSize: "11px", color: "#475569", marginBottom: "14px" }}>
+              Key performance metrics for the optimised portfolio. These figures represent the expected annualised values derived from
+              historical price data using Modern Portfolio Theory (MPT). The Sharpe Ratio measures risk-adjusted return;
+              a value above 1.0 is considered good, above 2.0 is excellent.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "18px" }}>
+              {results.performance?.expected_return != null && (
+                <div style={{ backgroundColor: "#f0fdf4", borderRadius: "8px", padding: "14px 16px", border: "1px solid #bbf7d0" }}>
+                  <div style={{ fontSize: "9px", fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "4px" }}>Expected Annual Return</div>
+                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#15803d" }}>{(results.performance.expected_return * 100).toFixed(2)}%</div>
+                  <div style={{ fontSize: "9px", color: "#16a34a", marginTop: "4px" }}>The projected annual gain based on historical mean returns weighted by optimal allocation.</div>
+                </div>
+              )}
+              {results.performance?.volatility != null && (
+                <div style={{ backgroundColor: "#fff1f2", borderRadius: "8px", padding: "14px 16px", border: "1px solid #fecdd3" }}>
+                  <div style={{ fontSize: "9px", fontWeight: 700, color: "#be123c", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "4px" }}>Portfolio Volatility</div>
+                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#be123c" }}>{(results.performance.volatility * 100).toFixed(2)}%</div>
+                  <div style={{ fontSize: "9px", color: "#dc2626", marginTop: "4px" }}>Annualised standard deviation of portfolio returns. Lower = more stable.</div>
+                </div>
+              )}
+              {results.performance?.sharpe_ratio != null && (
+                <div style={{ backgroundColor: "#eff6ff", borderRadius: "8px", padding: "14px 16px", border: "1px solid #bfdbfe" }}>
+                  <div style={{ fontSize: "9px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "4px" }}>Sharpe Ratio</div>
+                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#1d4ed8" }}>{results.performance.sharpe_ratio.toFixed(4)}</div>
+                  <div style={{ fontSize: "9px", color: "#2563eb", marginTop: "4px" }}>Return per unit of risk (excess return / volatility). Benchmark: {">"} 1.0 = good.</div>
+                </div>
+              )}
+            </div>
+            {/* Risk metrics row */}
+            {results.risk_metrics && (
+              <>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "8px", marginTop: "4px" }}>Risk Metrics</div>
+                <div style={{ fontSize: "11px", color: "#475569", marginBottom: "10px" }}>
+                  Value at Risk (VaR) estimates the maximum expected loss at a given confidence level over one trading day.
+                  Conditional VaR (CVaR / Expected Shortfall) measures the average loss in the worst-case tail scenarios beyond VaR.
+                  Max Drawdown is the largest peak-to-trough decline observed in the historical period.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+                  <div style={{ backgroundColor: "#fafafa", borderRadius: "6px", padding: "12px 14px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "3px" }}>VaR (95%)</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#dc2626" }}>{(results.risk_metrics.var_95 * 100).toFixed(2)}%</div>
+                    <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Max daily loss with 95% confidence</div>
+                  </div>
+                  <div style={{ backgroundColor: "#fafafa", borderRadius: "6px", padding: "12px 14px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "3px" }}>CVaR (95%)</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#dc2626" }}>{(results.risk_metrics.cvar_95 * 100).toFixed(2)}%</div>
+                    <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Average loss beyond VaR threshold</div>
+                  </div>
+                  <div style={{ backgroundColor: "#fafafa", borderRadius: "6px", padding: "12px 14px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "3px" }}>Max Drawdown</div>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#dc2626" }}>{(results.risk_metrics.max_drawdown * 100).toFixed(2)}%</div>
+                    <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Worst peak-to-trough decline</div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── SECTION 2: Optimal Weights & Allocation ── */}
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a5f", borderBottom: "2px solid #1e3a5f", paddingBottom: "4px", marginBottom: "8px" }}>
+              2. Optimal Portfolio Weights
+            </div>
+            <div style={{ fontSize: "11px", color: "#475569", marginBottom: "12px" }}>
+              The weights below represent the proportion of total capital to allocate to each asset in order to achieve the selected
+              objective. These are derived by solving the optimisation problem defined by Modern Portfolio Theory or, in the case
+              of HRP, by hierarchical clustering of the covariance matrix.
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: "14px" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#1e3a5f", color: "#ffffff" }}>
+                  <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700 }}>Symbol</th>
+                  <th style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700 }}>Weight (%)</th>
+                  {investAmount && parseFloat(investAmount) > 0 && (
+                    <th style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700 }}>
+                      Allocation (${parseFloat(investAmount).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })})
+                    </th>
+                  )}
+                  <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700 }}>Bar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(results.weights)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([sym, w], i) => {
+                    const alloc = w * (parseFloat(investAmount) || 0);
+                    return (
+                      <tr key={sym} style={{ backgroundColor: i % 2 === 0 ? "#f8fafc" : "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                        <td style={{ padding: "10px 14px", fontWeight: 700 }}>{sym}</td>
+                        <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600 }}>{(w * 100).toFixed(2)}%</td>
+                        {investAmount && parseFloat(investAmount) > 0 && (
+                          <td style={{ padding: "10px 14px", textAlign: "right", color: "#15803d", fontWeight: 700 }}>
+                            ${alloc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        )}
+                        <td style={{ padding: "10px 14px" }}>
+                          <div style={{ height: "8px", backgroundColor: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
+                            <div style={{ height: "100%", borderRadius: "4px", backgroundColor: COLORS[i % COLORS.length], width: `${w * 100}%` }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── SECTION 3: Individual Asset Stats ── */}
+          {stats?.individual && (
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a5f", borderBottom: "2px solid #1e3a5f", paddingBottom: "4px", marginBottom: "8px" }}>
+                3. Individual Asset Performance
+              </div>
+              <div style={{ fontSize: "11px", color: "#475569", marginBottom: "12px" }}>
+                Per-asset statistics computed over the selected date range. <strong>Avg Return</strong> is the mean daily return.
+                <strong> Ann. Volatility</strong> is the annualised standard deviation (daily σ × √252).
+                <strong> Sharpe Score</strong> is each asset&apos;s individual risk-adjusted return.
+                <strong> Max Drawdown</strong> is the worst peak-to-trough loss. <strong>Cumulative Return</strong> is total return over the period.
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#1e3a5f", color: "#ffffff" }}>
+                    <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700 }}>Symbol</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>Avg Return</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>Ann. Volatility</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>Sharpe Score</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>Max Drawdown</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>Cumulative Return</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stats.individual).map(([sym, d]: [string, any], i) => (
+                    <tr key={sym} style={{ backgroundColor: i % 2 === 0 ? "#f8fafc" : "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 700 }}>{sym}</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right" }}>{(d.avg_return * 100).toFixed(3)}%</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right" }}>{(d.annualized_volatility * 100).toFixed(2)}%</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right" }}>{d.sharpe_score?.toFixed(3)}</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right", color: "#dc2626", fontWeight: 600 }}>{(d.max_drawdown * 100).toFixed(2)}%</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right", color: d.cumulative_return >= 0 ? "#15803d" : "#dc2626", fontWeight: 700 }}>
+                        {(d.cumulative_return * 100).toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── SECTION 4: Correlation Matrix ── */}
+          {stats?.advanced?.correlation_matrix && (
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a5f", borderBottom: "2px solid #1e3a5f", paddingBottom: "4px", marginBottom: "8px" }}>
+                4. Correlation Matrix
+              </div>
+              <div style={{ fontSize: "11px", color: "#475569", marginBottom: "12px" }}>
+                Pearson correlation of daily returns between each pair of assets (range: −1 to +1). A value of <strong>+1</strong> means the
+                assets move perfectly in sync (no diversification benefit). A value near <strong>0</strong> means the assets are uncorrelated,
+                providing maximum diversification. <strong>Negative values</strong> indicate inverse movement — ideal for hedges.
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#334155", color: "#ffffff" }}>
+                    <th style={{ padding: "8px 12px", textAlign: "left" }}></th>
+                    {Object.keys(stats.advanced.correlation_matrix).map((s) => (
+                      <th key={s} style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>{s}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stats.advanced.correlation_matrix).map(([row, cols]: [string, any], i) => (
+                    <tr key={row} style={{ backgroundColor: i % 2 === 0 ? "#f8fafc" : "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 700 }}>{row}</td>
+                      {Object.values(cols).map((v: any, j) => (
+                        <td key={j} style={{ padding: "8px 12px", textAlign: "right", fontWeight: v === 1 ? 700 : 400,
+                          color: v === 1 ? "#0f172a" : v > 0.7 ? "#dc2626" : v < 0 ? "#15803d" : "#0f172a" }}>
+                          {v.toFixed(4)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── SECTION 5: Covariance Matrix ── */}
+          {stats?.advanced?.covariance_matrix && (
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a5f", borderBottom: "2px solid #1e3a5f", paddingBottom: "4px", marginBottom: "8px" }}>
+                5. Covariance Matrix
+              </div>
+              <div style={{ fontSize: "11px", color: "#475569", marginBottom: "12px" }}>
+                The covariance matrix quantifies how asset returns move together in absolute terms (units: return²/day).
+                Diagonal entries show each asset&apos;s own variance. Off-diagonal entries show the joint variability between pairs —
+                used directly by PyPortfolioOpt to compute portfolio variance and solve the efficient frontier.
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#334155", color: "#ffffff" }}>
+                    <th style={{ padding: "8px 12px", textAlign: "left" }}></th>
+                    {Object.keys(stats.advanced.covariance_matrix).map((s) => (
+                      <th key={s} style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>{s}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stats.advanced.covariance_matrix).map(([row, cols]: [string, any], i) => (
+                    <tr key={row} style={{ backgroundColor: i % 2 === 0 ? "#f8fafc" : "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 700 }}>{row}</td>
+                      {Object.values(cols).map((v: any, j) => (
+                        <td key={j} style={{ padding: "8px 12px", textAlign: "right" }}>{(v as number).toFixed(6)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── SECTION 6: Beta vs Equal-Weighted ── */}
+          {stats?.advanced?.beta_vs_equal_weighted && (
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 800, color: "#1e3a5f", borderBottom: "2px solid #1e3a5f", paddingBottom: "4px", marginBottom: "8px" }}>
+                6. Beta vs Equal-Weighted Portfolio
+              </div>
+              <div style={{ fontSize: "11px", color: "#475569", marginBottom: "12px" }}>
+                Beta measures each asset&apos;s sensitivity relative to an equal-weighted benchmark portfolio of the same assets.
+                A beta of <strong>1.0</strong> means the asset moves in line with the benchmark.
+                Beta <strong>&gt; 1</strong> indicates the asset amplifies benchmark moves (higher risk/reward).
+                Beta <strong>&lt; 1</strong> (or negative) indicates the asset dampens moves, acting as a stabiliser.
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#334155", color: "#ffffff" }}>
+                    <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700 }}>Symbol</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700 }}>Beta</th>
+                    <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700 }}>Interpretation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stats.advanced.beta_vs_equal_weighted).map(([sym, beta]: [string, any], i) => (
+                    <tr key={sym} style={{ backgroundColor: i % 2 === 0 ? "#f8fafc" : "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "10px 14px", fontWeight: 700 }}>{sym}</td>
+                      <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700,
+                        color: beta > 1.2 ? "#dc2626" : beta < 0.8 ? "#15803d" : "#0f172a" }}>
+                        {beta.toFixed(4)}
+                      </td>
+                      <td style={{ padding: "10px 14px", fontSize: "11px", color: "#475569" }}>
+                        {beta > 1.2 ? "High sensitivity — amplifies market moves"
+                          : beta > 1.0 ? "Slightly above benchmark — modest amplification"
+                          : beta < 0 ? "Inverse relationship — acts as a hedge"
+                          : beta < 0.8 ? "Low sensitivity — stabilising effect"
+                          : "In line with equal-weighted benchmark"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Footer ── */}
+          <div style={{ borderTop: "2px solid #e2e8f0", paddingTop: "16px", marginTop: "16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ fontSize: "9px", color: "#94a3b8", maxWidth: "70%", fontStyle: "italic" }}>
+              ⚠ This report is automatically generated by UNFC Investor Analytics for academic and informational purposes only.
+              Past performance does not guarantee future results. This document does not constitute financial advice.
+              Data sourced from Yahoo Finance via yfinance. All calculations performed by PyPortfolioOpt (open-source).
+            </div>
+            <div style={{ fontSize: "9px", color: "#94a3b8", textAlign: "right" }}>
+              <div>University of Niagara Falls Canada</div>
+              <div>Generated: {new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

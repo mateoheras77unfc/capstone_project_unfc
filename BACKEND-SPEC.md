@@ -173,15 +173,15 @@ If the asset already exists, only missing dates are added — existing rows are 
 | Param | Type | Required | Default | Options |
 |-------|------|----------|---------|---------|
 | `asset_type` | string | No | `"stock"` | `"stock"` \| `"crypto"` \| `"index"` |
-| `interval` | string | No | `"1wk"` | `"1wk"` \| `"1mo"` |
+| `interval` | string | No | `"1d"` | `"1d"` \| `"1wk"` \| `"1mo"` |
 
 **Response `200`** — [SyncResponse](#syncresponse)
 ```json
 {
   "status": "success",
-  "message": "Synced AAPL (1wk) — 156 rows written",
+  "message": "Synced AAPL (1d) — 1260 rows written",
   "symbol": "AAPL",
-  "rows_synced": 156
+  "rows_synced": 1260
 }
 ```
 
@@ -246,7 +246,7 @@ The model is determined by the URL path, not the body.
 ```json
 {
   "symbol": "AAPL",
-  "interval": "1wk",
+  "interval": "1d",
   "periods": 8,
   "lookback_window": 20,
   "epochs": 50,
@@ -258,6 +258,7 @@ The model is determined by the URL path, not the body.
 
 | Interval | Minimum rows |
 |----------|--------------|
+| `1d` | 60 (~3 months of trading days) — **default** |
 | `1wk` | 52 (1 year of weekly data) |
 | `1mo` | 24 (2 years of monthly data) |
 
@@ -511,7 +512,7 @@ Each asset is guaranteed a **minimum weight between 5% and 15%** (randomly chose
 | Field | Type | Default | Range |
 |-------|------|---------|-------|
 | `symbol` | string | — | — |
-| `interval` | `"1wk"` \| `"1mo"` | `"1wk"` | — |
+| `interval` | `"1d"` \| `"1wk"` \| `"1mo"` | `"1d"` | — |
 | `periods` | int | `4` | 1–52 |
 | `lookback_window` | int | `20` | 5–60 |
 | `epochs` | int | `50` | 10–200 (LSTM only) |
@@ -536,7 +537,7 @@ Each asset is guaranteed a **minimum weight between 5% and 15%** (randomly chose
 ### AnalyzeRequest
 | Field | Type | Default |
 |-------|------|---------|
-| `interval` | `"1wk"` \| `"1mo"` | `"1wk"` |
+| `interval` | `"1d"` \| `"1wk"` \| `"1mo"` | `"1d"` |
 | `periods` | int (1–52) | `4` |
 | `model` | `"base"` \| `"lstm"` \| `"prophet"` | `"base"` |
 | `asset_type` | `"stock"` \| `"crypto"` \| `"index"` | `"stock"` |
@@ -558,7 +559,7 @@ Each asset is guaranteed a **minimum weight between 5% and 15%** (randomly chose
 | Field | Type | Default | Constraints |
 |-------|------|---------|-------------|
 | `symbols` | string[] | — | 2–10 items |
-| `interval` | `"1wk"` \| `"1mo"` | `"1wk"` | — |
+| `interval` | `"1d"` \| `"1wk"` \| `"1mo"` | `"1d"` | — |
 | `risk_free_rate` | float | `0.05` | 0.0–0.20 |
 | `from_date` | ISO date string | `null` | Must be before `to_date` |
 | `to_date` | ISO date string | `null` | Must be after `from_date` |
@@ -592,7 +593,7 @@ GET /prices/{symbol}?limit=200&from_date=2022-01-01
 **Forecast (single asset page)**
 ```
 POST /analyze/{symbol}
-body: { interval: "1wk", periods: 12, model: "base" }
+body: { interval: "1d", periods: 12, model: "base" }
 → use dates[], point_forecast[], lower_bound[], upper_bound[] to draw chart
 → use forecast_horizon_label as chart subtitle
 ```

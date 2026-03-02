@@ -14,8 +14,8 @@ GET  /api/v1/assets/             List cached assets
 POST /api/v1/assets/sync/{sym}   Sync a symbol from Yahoo Finance
 GET  /api/v1/prices/{symbol}     Historical OHLCV data
 POST /api/v1/forecast/base       EWM baseline forecast
-POST /api/v1/forecast/lstm       LSTM neural-network forecast
 POST /api/v1/forecast/prophet    Facebook Prophet forecast
+POST /api/v1/forecast/prophet-xgb Prophet + XGBoost forecast
 
 OpenAPI docs
 ------------
@@ -29,10 +29,14 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 
 from app.api.v1.router import api_router
 from core.config import get_settings
 from core.database import get_supabase_client
+from app.chat_routes import router as chat_router
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +67,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.error("Supabase initialisation failed: %s", exc)
         raise
+
+    # Initialise in-memory response cache (avoids redundant Supabase queries).
+    FastAPICache.init(InMemoryBackend(), prefix="investanalytics-cache")
+    logger.info("In-memory cache initialised")
 
     yield  # ← application runs here
 
@@ -96,6 +104,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────────────────────
 
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(chat_router)
 
 # ── Root health-check ─────────────────────────────────────────────────────────
 

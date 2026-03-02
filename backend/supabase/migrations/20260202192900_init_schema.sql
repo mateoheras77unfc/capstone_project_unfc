@@ -1,5 +1,5 @@
 -- Migration: Phase 1 Foundations
--- Description: Sets up the assets and historical_prices tables for Weekly tracking.
+-- Description: Sets up the assets and historical_prices tables for daily price tracking.
 
 -- 1. Assets Metadata Table
 CREATE TABLE IF NOT EXISTS assets (
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS assets (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Historical Prices Table (Weekly data only)
+-- 2. Historical Prices Table (daily granularity; frontend aggregates to weekly/monthly)
 CREATE TABLE IF NOT EXISTS historical_prices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     asset_id UUID REFERENCES assets(id) ON DELETE CASCADE,

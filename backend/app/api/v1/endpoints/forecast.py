@@ -5,9 +5,9 @@ Forecast endpoints.
 
 Routes
 ------
-POST /api/v1/forecast/base    EWM baseline forecast (no GPU needed).
-POST /api/v1/forecast/lstm    LSTM neural-network forecast.
-POST /api/v1/forecast/prophet Facebook Prophet trend/seasonality forecast.
+POST /api/v1/forecast/base       EWM baseline forecast (no GPU needed).
+POST /api/v1/forecast/prophet    Facebook Prophet trend/seasonality forecast.
+POST /api/v1/forecast/prophet-xgb Prophet + XGBoost residual correction.
 
 All three share identical request and response shapes (ForecastRequest /
 ForecastResponse) so the frontend only needs to change the URL to switch
@@ -18,7 +18,7 @@ Design
 1. Prices are fetched from Supabase by ``symbol`` so models always train
    on verified, correctly-labelled data — not whatever the client sends.
 2. Minimum data-point requirements are enforced *per interval* before any
-   model training starts (52 rows for 1wk, 24 for 1mo).
+   model training starts (60 rows for 1d, 52 rows for 1wk, 24 for 1mo).
 3. Each response includes ``interval``, ``periods_ahead``, a human-readable
    ``forecast_horizon_label``, and ``data_points_used``.
 4. Model training is CPU/GPU-bound — offloaded to a thread-pool executor
@@ -34,9 +34,22 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import LSTMForecastor, ProphetForecaster, SimpleForecaster
+from analytics.forecasting import (
+    ProphetForecaster,
+    ProphetXGBForecaster,
+    SimpleForecaster,
+)
 from app.api.dependencies import get_db
-from schemas.forecast import INTERVAL_CONFIG, ForecastRequest, ForecastResponse
+from schemas.forecast import (
+    INTERVAL_CONFIG,
+    ForecastRequest,
+    ForecastResponse,
+    ForecastMetricsRequest,
+    ForecastMetricsResponse,
+    ModelMetricRow,
+    ModelBoundsRow,
+)
+from analytics.metrics import walk_forward_backtest_last_n_weeks
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -54,6 +67,8 @@ def _horizon_label(periods: int, interval: str) -> str:
 
     Examples::
 
+        _horizon_label(10, "1d")  -> "10 days (~2 weeks ahead)"
+        _horizon_label(63, "1d")  -> "63 days (~3 months ahead)"
         _horizon_label(4,  "1wk") -> "4 weeks (~1 month ahead)"
         _horizon_label(13, "1wk") -> "13 weeks (~3 months ahead)"
         _horizon_label(52, "1wk") -> "52 weeks (~1.0 years ahead)"
@@ -63,7 +78,21 @@ def _horizon_label(periods: int, interval: str) -> str:
     cfg = INTERVAL_CONFIG[interval]
     unit = cfg["label_singular"] if periods == 1 else cfg["label_plural"]
 
-    if interval == "1wk":
+    if interval == "1d":
+        # Convert trading days to a calendar approximation (252 trading days ≈ 365 calendar days)
+        cal_days = periods * (365 / 252)
+        if cal_days >= 365:
+            years = cal_days / 365
+            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
+        elif cal_days >= 28:
+            months = round(cal_days / 30.44)
+            approx = f"~{months} month{'s' if months != 1 else ''} ahead"
+        elif cal_days >= 7:
+            weeks = round(cal_days / 7)
+            approx = f"~{weeks} week{'s' if weeks != 1 else ''} ahead"
+        else:
+            approx = "~days ahead"
+    elif interval == "1wk":
         months = periods / 4.33
         m = round(months)  # round first so 4 wks → 1 month, not "days"
         if m >= 12:
@@ -127,7 +156,8 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             db.table("historical_prices")
             .select("timestamp, close_price")
             .eq("asset_id", asset_id)
-            .order("timestamp", desc=False)
+            .order("timestamp", desc=True)   # newest first so limit captures recent data
+            .limit(2000)                       # ~8 years of daily bars; avoids Supabase 1 000-row default cap
             .execute()
         )
     except Exception as exc:
@@ -142,7 +172,7 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             ),
         )
 
-    rows = price_res.data
+    rows = list(reversed(price_res.data))  # restore chronological order (oldest → newest)
     index = pd.to_datetime([r["timestamp"] for r in rows], utc=True)
     values = [float(r["close_price"]) for r in rows]
     logger.info("Loaded %d price rows for %s", len(rows), symbol)
@@ -196,8 +226,10 @@ def _build_response(
 
 def _run_base(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     """Run SimpleForecaster synchronously (called inside thread pool)."""
+    # Use at least 60-day span so EWM is a smoothed "recent average", not overly tilted to last few weeks
+    span = min(max(req.lookback_window, 60), len(prices) - 1)
     model = SimpleForecaster(
-        span=min(req.lookback_window, len(prices) - 1),
+        span=span,
         confidence_level=req.confidence_level,
     )
     model.fit(prices)
@@ -226,6 +258,31 @@ def _run_prophet(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     result = model.forecast(periods=req.periods)
     result["model_info"] = model.get_model_info()
     return result
+
+
+def _run_prophet_xgb(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
+    """Run ProphetXGBForecaster synchronously (called inside thread pool)."""
+    model = ProphetXGBForecaster(confidence_level=req.confidence_level)
+    model.fit(prices)
+    result = model.forecast(periods=req.periods)
+    result["model_info"] = model.get_model_info()
+    return result
+
+
+def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, Any]:
+    """Run walk-forward backtest and bounds; called in thread pool."""
+    interval = req.interval if req.interval in ("1wk", "1mo") else "1wk"
+    raw = walk_forward_backtest_last_n_weeks(
+        prices,
+        interval=interval,
+        last_n_weeks=req.last_n_weeks,
+        lookback_window=req.lookback_window,
+        epochs=req.epochs,
+        confidence_level=req.confidence_level,
+        models=req.models,
+        bounds_horizon_periods=req.bounds_horizon_periods,
+    )
+    return raw
 
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
@@ -263,53 +320,6 @@ async def base_forecast(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Base forecast failed for %s", request.symbol)
-        raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
-
-    return _build_response(result, request, len(prices))
-
-
-@router.post(
-    "/lstm",
-    response_model=ForecastResponse,
-    summary="LSTM neural-network forecast",
-)
-async def lstm_forecast(
-    request: ForecastRequest,
-    db: Client = Depends(get_db),
-) -> ForecastResponse:
-    """
-    LSTM deep-learning forecast.
-
-    Requires TensorFlow (``pip install tensorflow``). Training runs in a
-    thread pool to avoid blocking the event loop.
-    Prices are fetched from the database by ``symbol``.
-
-    Args:
-        request: Symbol, interval, and forecast parameters.
-
-    Returns:
-        Point forecast with residual-based confidence bounds.
-
-    Raises:
-        HTTPException 503: TensorFlow not installed.
-        HTTPException 404: Symbol not synced yet.
-        HTTPException 422: Insufficient rows for the requested interval.
-    """
-    prices = await _fetch_prices(request.symbol, db)
-    _validate_interval_minimums(prices, request.interval, request.symbol)
-
-    loop = asyncio.get_event_loop()
-    try:
-        result = await loop.run_in_executor(_executor, _run_lstm, prices, request)
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="TensorFlow is not installed on this server. Use /forecast/base instead.",
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("LSTM forecast failed for %s", request.symbol)
         raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
 
     return _build_response(result, request, len(prices))
@@ -359,3 +369,75 @@ async def prophet_forecast(
         raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
 
     return _build_response(result, request, len(prices))
+
+
+@router.post(
+    "/prophet-xgb",
+    response_model=ForecastResponse,
+    summary="Prophet + XGBoost forecast",
+)
+async def prophet_xgb_forecast(
+    request: ForecastRequest,
+    db: Client = Depends(get_db),
+) -> ForecastResponse:
+    """
+    Prophet trend/seasonality with XGBoost residual correction (step 1).
+    Uses a pre-trained artifact from model/experiments-pool if present.
+    """
+    prices = await _fetch_prices(request.symbol, db)
+    _validate_interval_minimums(prices, request.interval, request.symbol)
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(_executor, _run_prophet_xgb, prices, request)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Prophet+XGB artifact not found. Run the artifact-saving cell in model/experiments-pool/03-prophet-xgb-pool.ipynb.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Prophet+XGB forecast failed for %s", request.symbol)
+        raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
+
+    return _build_response(result, request, len(prices))
+
+
+@router.post(
+    "/metrics",
+    response_model=ForecastMetricsResponse,
+    summary="Walk-forward 1-step backtest (last 20 weeks) + forecast bounds",
+)
+async def forecast_metrics(
+    request: ForecastMetricsRequest,
+    db: Client = Depends(get_db),
+) -> ForecastMetricsResponse:
+    """
+    Run walk-forward 1-step backtest over the last N weeks and return
+    MAE/RMSE/MAPE per model plus forecast bounds for the Error Metrics
+    Comparison and Forecast Bounds panels.
+    """
+    prices = await _fetch_prices(request.symbol, db)
+    _validate_interval_minimums(prices, request.interval, request.symbol)
+
+    loop = asyncio.get_event_loop()
+    try:
+        raw = await loop.run_in_executor(
+            _executor, _run_metrics, prices, request,
+        )
+    except Exception as exc:
+        logger.exception("Metrics computation failed for %s", request.symbol)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    metrics_rows = [ModelMetricRow(**m) for m in raw.get("metrics", [])]
+    bounds_rows = [ModelBoundsRow(**b) for b in raw.get("bounds", [])]
+    return ForecastMetricsResponse(
+        symbol=request.symbol,
+        interval=request.interval,
+        last_n_weeks=raw.get("last_n_weeks", request.last_n_weeks),
+        bounds_horizon_weeks=raw.get("bounds_horizon_weeks", 12),
+        metrics=metrics_rows,
+        bounds=bounds_rows,
+        error=raw.get("error"),
+    )

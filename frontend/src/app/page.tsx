@@ -116,7 +116,7 @@ export default function Home() {
           <div>
             <h3 className="text-xl font-bold text-white">Forecasting</h3>
             <p className="text-gray-400 mt-1 leading-relaxed">
-              View price history and generate forecasts using EWM, Prophet, or LSTM models for any tracked asset.
+              View price history and generate forecasts using EWM, Prophet, or Prophet+XGBoost models for any tracked asset.
             </p>
           </div>
           <span className="text-cyan-400 text-sm font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">

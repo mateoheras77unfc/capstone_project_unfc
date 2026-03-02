@@ -17,7 +17,7 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 # Type alias for the supported intervals.
-Interval = Literal["1wk", "1mo"]
+Interval = Literal["1d", "1wk", "1mo"]
 
 
 class YFinanceFetcher:
@@ -26,12 +26,13 @@ class YFinanceFetcher:
 
     Supported intervals
     -------------------
-    - ``"1wk"`` — Weekly data (primary, used throughout the application).
-    - ``"1mo"`` — Monthly data (available for future use).
+    - ``"1d"``  — Daily data (primary, used throughout the application).
+    - ``"1wk"`` — Weekly data.
+    - ``"1mo"`` — Monthly data.
 
     Example:
         >>> fetcher = YFinanceFetcher()
-        >>> df = fetcher.fetch_history("AAPL", interval="1wk")
+        >>> df = fetcher.fetch_history("AAPL", interval="1d")
         >>> df.columns
         Index(['timestamp', 'open', 'high', 'low', 'close', 'volume'], ...)
     """
@@ -41,7 +42,7 @@ class YFinanceFetcher:
     def fetch_history(
         self,
         symbol: str,
-        interval: Interval = "1wk",
+        interval: Interval = "1d",
         period: str = "max",
     ) -> pd.DataFrame:
         """
@@ -49,7 +50,7 @@ class YFinanceFetcher:
 
         Args:
             symbol:   Ticker (e.g. ``"AAPL"``, ``"BTC-USD"``, ``"^GSPC"``).
-            interval: Aggregation interval — ``"1wk"`` or ``"1mo"``.
+            interval: Aggregation interval — ``"1d"``, ``"1wk"`` or ``"1mo"``.
             period:   How far back to fetch (``"max"``, ``"5y"``, ``"2y"``…).
 
         Returns:
@@ -57,11 +58,11 @@ class YFinanceFetcher:
             ``low``, ``close``, ``volume``.  Empty DataFrame on failure.
 
         Raises:
-            ValueError: If ``interval`` is not ``"1wk"`` or ``"1mo"``.
+            ValueError: If ``interval`` is not ``"1d"``, ``"1wk"`` or ``"1mo"``.
         """
-        if interval not in ("1wk", "1mo"):
+        if interval not in ("1d", "1wk", "1mo"):
             raise ValueError(
-                f"Unsupported interval '{interval}'. Use '1wk' or '1mo'."
+                f"Unsupported interval '{interval}'. Use '1d', '1wk' or '1mo'."
             )
 
         try:

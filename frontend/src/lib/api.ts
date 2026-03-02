@@ -4,6 +4,8 @@ import {
   SyncResponse,
   ForecastRequest,
   ForecastResponse,
+  ForecastMetricsRequest,
+  ForecastMetricsResponse,
   AnalyzeRequest,
   AnalyzeResponse,
   StatsRequest,
@@ -75,7 +77,8 @@ export const api = {
   // Forecast
   forecastBase: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/base", { method: "POST", body: JSON.stringify(data) }),
   forecastProphet: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/prophet", { method: "POST", body: JSON.stringify(data) }),
-  forecastLstm: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/lstm", { method: "POST", body: JSON.stringify(data) }),
+  forecastProphetXgb: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/prophet-xgb", { method: "POST", body: JSON.stringify(data) }),
+  getForecastMetrics: (data: ForecastMetricsRequest) => fetchApi<ForecastMetricsResponse>("/forecast/metrics", { method: "POST", body: JSON.stringify(data) }),
 
   // Analyze
   analyze: (symbol: string, data: AnalyzeRequest) => fetchApi<AnalyzeResponse>(`/analyze/${symbol}`, { method: "POST", body: JSON.stringify(data) }),

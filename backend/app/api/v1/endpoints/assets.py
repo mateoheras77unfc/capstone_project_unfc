@@ -19,6 +19,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi_cache.decorator import cache
 from supabase import Client
 
 from app.api.dependencies import get_db
@@ -33,9 +34,12 @@ _coordinator = DataCoordinator()
 
 
 @router.get("/", response_model=list[AssetOut], summary="List all cached assets")
+@cache(expire=60)
 def list_assets(db: Client = Depends(get_db)) -> list[AssetOut]:
     """
     Return every asset row currently cached in the database.
+
+    Cached for 60 seconds to reduce Supabase query load.
 
     Returns:
         List of asset records ordered by symbol.
@@ -193,14 +197,14 @@ def delete_asset(
 def sync_asset(
     symbol: str,
     asset_type: str = "stock",
-    interval: str = "1wk",
+    interval: str = "1d",
 ) -> SyncResponse:
     """
     Fetch historical OHLCV data from Yahoo Finance and cache it in Supabase.
 
     - If the asset already exists, only missing dates are upserted.
     - Supported ``asset_type`` values: ``stock``, ``crypto``, ``index``.
-    - Supported ``interval`` values: ``1wk``, ``1mo``.
+    - Supported ``interval`` values: ``1d`` (default), ``1wk``, ``1mo``.
 
     Args:
         symbol:     Ticker symbol (e.g. ``AAPL``, ``BTC-USD``).

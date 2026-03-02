@@ -2,8 +2,8 @@
 
 > A full-stack financial analysis platform for stock research and portfolio optimization, built as a capstone project for UNFC.
 
-[![Frontend](https://img.shields.io/badge/Frontend-Vercel-black?logo=vercel)](https://capstone-project-unfc-ashen.vercel.app)
-[![Backend](https://img.shields.io/badge/Backend-Render-46E3B7?logo=render)](https://capstone-project-unfc-l68p.onrender.com)
+[![Frontend](https://img.shields.io/badge/Frontend-Vercel-black?logo=vercel)](https://capstoneproject.swiftshift.digital)
+[![Backend](https://img.shields.io/badge/Backend-Render-46E3B7?logo=render)](https://capstone-project-unfc-0zaa.onrender.com)
 [![Database](https://img.shields.io/badge/Database-Supabase-3ECF8E?logo=supabase)](https://supabase.com)
 
 ---
@@ -110,7 +110,7 @@ The project demonstrates a production-grade architecture integrating a Python da
 
 ## 🔌 API Reference (Backend)
 
-Base URL: `https://capstone-project-unfc-l68p.onrender.com`
+Base URL: `https://capstone-project-unfc-0zaa.onrender.com`
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -268,7 +268,7 @@ This populates the `assets` table with a default list of tickers and fetches the
 
 | Variable | Value | Environment |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://your-service.onrender.com` | Production |
+| `NEXT_PUBLIC_API_URL` | `https://capstone-project-unfc-0zaa.onrender.com` | Production |
 
 5. Deploy. Once live, copy the Vercel URL back into Render's `FRONTEND_URL` variable and redeploy the backend.
 

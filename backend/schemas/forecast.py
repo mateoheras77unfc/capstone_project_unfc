@@ -1,11 +1,11 @@
 """
 Pydantic schemas for forecast request / response.
 
-All three forecast endpoints (base, LSTM, Prophet) share identical I/O
+Forecast endpoints (base, prophet, prophet-xgb) share identical I/O
 shapes so the frontend only needs to change the URL to switch models.
 """
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -17,6 +17,11 @@ from pydantic import BaseModel, Field, field_validator
 # label_plural    – used in human-readable horizon strings (n > 1 periods).
 # ---------------------------------------------------------------------------
 INTERVAL_CONFIG: Dict[str, Dict[str, Any]] = {
+    "1d": {
+        "min_samples": 60,   # ~3 months of trading days — enough for valid stats
+        "label_singular": "day",
+        "label_plural": "days",
+    },
     "1wk": {
         "min_samples": 52,
         "label_singular": "week",
@@ -45,14 +50,14 @@ class ForecastRequest(BaseModel):
         interval:         Bar interval used during sync — drives minimum-
                           data validation and horizon labels.
         periods:          Number of future time steps to forecast.
-        lookback_window:  LSTM sequence length (ignored by EWM / Prophet).
-        epochs:           LSTM training epochs (ignored by EWM / Prophet).
+        lookback_window:  Optional (ignored by EWM / Prophet).
+        epochs:           Optional (ignored by EWM / Prophet).
         confidence_level: Probability mass for the confidence interval.
     """
 
     symbol: str
-    interval: Literal["1wk", "1mo"] = "1wk"
-    periods: int = Field(default=4, ge=1, le=52)
+    interval: Literal["1d", "1wk", "1mo"] = "1d"
+    periods: int = Field(default=4, ge=1, le=365)
     lookback_window: int = Field(default=20, ge=5, le=60)
     epochs: int = Field(default=50, ge=10, le=200)
     confidence_level: float = Field(default=0.95, ge=0.5, le=0.99)
@@ -72,10 +77,11 @@ class ForecastResponse(BaseModel):
 
     Attributes:
         symbol:                 Ticker the forecast was built for.
-        interval:               Bar interval used (``1wk`` or ``1mo``).
+        interval:               Bar interval used (``1d``, ``1wk``, or ``1mo``).
         periods_ahead:          Number of future steps forecasted.
         forecast_horizon_label: Human-readable horizon string
-                                (e.g. ``"4 weeks (~1 month ahead)"``).
+                                (e.g. ``"10 days (~2 weeks ahead)"`` for daily,
+                                ``"4 weeks (~1 month ahead)"`` for weekly).
         data_points_used:       Historical rows the model trained on.
         dates:                  ISO-8601 dates for each forecast period.
         point_forecast:         Central estimate for each period.
@@ -96,3 +102,67 @@ class ForecastResponse(BaseModel):
     upper_bound: List[float]
     confidence_level: float
     model_info: Dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Walk-forward metrics (Error Metrics Comparison + Forecast Bounds)
+# ---------------------------------------------------------------------------
+
+
+class ForecastMetricsRequest(BaseModel):
+    """Request for walk-forward 1-step backtest and forecast bounds."""
+
+    symbol: str
+    interval: Literal["1d", "1wk", "1mo"] = "1wk"
+    last_n_weeks: int = Field(default=20, ge=5, le=52, description="Walk-forward test window size")
+    lookback_window: int = Field(default=20, ge=5, le=60)
+    epochs: int = Field(default=30, ge=10, le=200)
+    confidence_level: float = Field(default=0.95, ge=0.5, le=0.99)
+    models: Optional[List[Literal["base", "prophet", "prophet_xgb"]]] = Field(
+        default=None,
+        description="Models to run. Default is base+prophet only for faster response.",
+    )
+    bounds_horizon_periods: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=52,
+        description="Forecast bounds horizon (number of periods). If not set, uses 12 for 1wk and 4 for 1mo.",
+    )
+
+    @field_validator("symbol")
+    @classmethod
+    def normalise_symbol(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not v:
+            raise ValueError("symbol must not be empty")
+        return v
+
+
+class ModelMetricRow(BaseModel):
+    """One row in the error metrics comparison table."""
+
+    model: str
+    mae: float
+    rmse: float
+    mape: float
+
+
+class ModelBoundsRow(BaseModel):
+    """Forecast bounds for one model (lower, point, upper) over the horizon."""
+
+    model: str
+    lower: List[float]
+    forecast: List[float]
+    upper: List[float]
+
+
+class ForecastMetricsResponse(BaseModel):
+    """Response for walk-forward metrics and forecast bounds."""
+
+    symbol: str
+    interval: str
+    last_n_weeks: int
+    bounds_horizon_weeks: int
+    metrics: List[ModelMetricRow]
+    bounds: List[ModelBoundsRow]
+    error: Optional[str] = None

@@ -19,11 +19,12 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from pypfopt import EfficientFrontier, expected_returns, risk_models
+from pypfopt import EfficientFrontier, HRPOpt, expected_returns, risk_models
 
 # ── Annualisation frequency mapping ──────────────────────────────────────────
 
 _FREQ: Dict[str, int] = {
+    "1d": 252,
     "1wk": 52,
     "1mo": 12,
 }
@@ -96,7 +97,7 @@ def _mu_sigma(prices_df: pd.DataFrame, interval: str):
     Uses PyPortfolioOpt's ``mean_historical_return`` and ``sample_cov``
     with the correct annualisation frequency for the bar interval.
     """
-    freq = _FREQ.get(interval, 52)
+    freq = _FREQ.get(interval, 252)
     mu = expected_returns.mean_historical_return(prices_df, frequency=freq)
     S = risk_models.sample_cov(prices_df, frequency=freq)
     return mu, S
@@ -161,6 +162,53 @@ def optimize(
 
     weights = ef.clean_weights()
     perf = ef.portfolio_performance(risk_free_rate=risk_free_rate)
+
+    return {
+        "weights": {k: round(float(v), 4) for k, v in weights.items()},
+        "performance": {
+            "expected_annual_return": round(float(perf[0]), 4),
+            "annual_volatility": round(float(perf[1]), 4),
+            "sharpe_ratio": round(float(perf[2]), 4),
+        },
+    }
+
+
+# ── Hierarchical Risk Parity ─────────────────────────────────────────────────
+
+
+def optimize_hrp(prices_df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Run Hierarchical Risk Parity (HRP) optimization.
+
+    HRP uses hierarchical clustering on the asset correlation structure to
+    allocate risk equally across clusters, without requiring expected-return
+    estimates.  This makes it less sensitive to estimation error than
+    mean-variance approaches.
+
+    Args:
+        prices_df: Aligned price DataFrame (one column per ticker).
+
+    Returns:
+        Dict with keys:
+          - ``weights``     — Dict[str, float] cleaned HRP weights.
+          - ``performance`` — Dict with ``expected_annual_return``,
+                              ``annual_volatility``, ``sharpe_ratio``.
+
+    Raises:
+        ValueError: If fewer than 2 assets are provided.
+    """
+    if prices_df.shape[1] < 2:
+        raise ValueError(
+            "HRP requires at least 2 assets with overlapping history."
+        )
+
+    # Compute daily/periodic returns for the clusterer.
+    returns = prices_df.pct_change().dropna()
+
+    hrp = HRPOpt(returns)
+    hrp.optimize()
+    weights = hrp.clean_weights()
+    perf = hrp.portfolio_performance(verbose=False)
 
     return {
         "weights": {k: round(float(v), 4) for k, v in weights.items()},

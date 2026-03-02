@@ -30,6 +30,7 @@ from scipy import stats
 # ── Annualisation factors ─────────────────────────────────────────────────────
 
 _FREQ_FACTOR: Dict[str, int] = {
+    "1d": 252,
     "1wk": 52,
     "1mo": 12,
 }
@@ -65,7 +66,7 @@ def cumulative_return(prices: pd.Series) -> float:
 
 def annualized_volatility(prices: pd.Series, interval: str) -> float:
     """Annualized std dev of log returns, scaled by the bar frequency."""
-    factor = _FREQ_FACTOR.get(interval, 52)
+    factor = _FREQ_FACTOR.get(interval, 252)
     return float(_log_returns(prices).std() * np.sqrt(factor))
 
 
@@ -79,7 +80,7 @@ def individual_sharpe(
 
     Sharpe = (annualized_return − risk_free_rate) / annualized_volatility
     """
-    factor = _FREQ_FACTOR.get(interval, 52)
+    factor = _FREQ_FACTOR.get(interval, 252)
     rets = _log_returns(prices)
     ann_return = float(rets.mean() * factor)
     ann_vol = float(rets.std() * np.sqrt(factor))

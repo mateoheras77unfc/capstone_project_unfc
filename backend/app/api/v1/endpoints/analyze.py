@@ -25,7 +25,7 @@ Error codes
 404  Symbol is brand-new AND yfinance has no history for it.
 422  Not enough rows in the DB for the chosen interval.
      Malformed request body (Pydantic validation).
-503  Supabase unreachable / TensorFlow not installed (lstm model).
+503  Supabase unreachable / prophet not installed.
 500  Unexpected internal error.
 
 Design decisions
@@ -47,7 +47,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import LSTMForecastor, ProphetForecaster, SimpleForecaster
+from analytics.forecasting import ProphetForecaster, SimpleForecaster
 from app.api.dependencies import get_db
 from data_engine.coordinator import DataCoordinator
 from schemas.analyze import AnalyzeRequest, AnalyzeResponse, SyncSummary
@@ -70,16 +70,25 @@ def _horizon_label(periods: int, interval: str) -> str:
 
     Args:
         periods:  Number of future time steps.
-        interval: Bar interval (``"1wk"`` or ``"1mo"``).
+        interval: Bar interval (``"1d"``, ``"1wk"`` or ``"1mo"``).
 
     Returns:
-        Examples: ``"8 weeks (~2 months ahead)"``,
-                  ``"12 months (~1.0 years ahead)"``.
+        Examples: ``"30 days (~1 month ahead)"``,
+                  ``"8 weeks (~2 months ahead)"``.
     """
     cfg = INTERVAL_CONFIG[interval]
     unit = cfg["label_singular"] if periods == 1 else cfg["label_plural"]
 
-    if interval == "1wk":
+    if interval == "1d":
+        m = round(periods / 21)   # ~21 trading days per month
+        if m >= 12:
+            years = m / 12
+            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
+        elif m >= 1:
+            approx = f"~{m} month{'s' if m != 1 else ''} ahead"
+        else:
+            approx = f"~{periods} trading day{'s' if periods != 1 else ''} ahead"
+    elif interval == "1wk":
         m = round(periods / 4.33)
         if m >= 12:
             years = m / 12
@@ -142,7 +151,8 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             db.table("historical_prices")
             .select("timestamp, close_price")
             .eq("asset_id", asset_id)
-            .order("timestamp", desc=False)
+            .order("timestamp", desc=True)   # newest first so limit captures recent data
+            .limit(2000)                       # ~8 years of daily bars; avoids Supabase 1 000-row default cap
             .execute()
         )
     except Exception as exc:
@@ -154,7 +164,7 @@ async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
             detail=f"Sync completed but produced no price rows for '{symbol}'.",
         )
 
-    rows = price_res.data
+    rows = list(reversed(price_res.data))  # restore chronological order (oldest → newest)
     index = pd.to_datetime([r["timestamp"] for r in rows], utc=True)
     values = [float(r["close_price"]) for r in rows]
     logger.info("Loaded %d price rows for %s", len(rows), symbol)
@@ -239,8 +249,10 @@ def _run_model(
     elif req.model == "prophet":
         model = ProphetForecaster(confidence_level=req.confidence_level)
     else:  # "base" (default)
+        # Use at least 60-day span so EWM is a smoothed "recent average", not overly tilted to last few weeks
+        span = min(max(req.lookback_window, 60), len(prices) - 1)
         model = SimpleForecaster(
-            span=min(req.lookback_window, len(prices) - 1),
+            span=span,
             confidence_level=req.confidence_level,
         )
 
@@ -283,7 +295,7 @@ async def analyze(
     {
       "interval":   "1wk",     // "1wk" | "1mo"
       "periods":    4,          // 1–52 steps forward
-      "model":      "base",     // "base" | "lstm" | "prophet"
+      "model":      "base",     // "base" | "prophet"
       "asset_type": "stock"     // "stock" | "crypto" | "index"
     }
     ```
@@ -387,7 +399,7 @@ async def analyze(
             request,
         )
     except ImportError as exc:
-        pkg = "TensorFlow" if request.model == "lstm" else "prophet"
+        pkg = "prophet"
         raise HTTPException(
             status_code=503,
             detail=f"'{pkg}' is not installed on this server. Use model='base' instead.",

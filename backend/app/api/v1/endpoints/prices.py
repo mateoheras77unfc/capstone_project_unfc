@@ -13,6 +13,7 @@ from datetime import date as Date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi_cache.decorator import cache
 from supabase import Client
 
 from app.api.dependencies import get_db
@@ -27,9 +28,10 @@ router = APIRouter()
     response_model=list[PriceOut],
     summary="Historical prices for a symbol",
 )
+@cache(expire=300)
 def get_prices(
     symbol: str,
-    limit: int = Query(default=200, ge=1, le=1000, description="Max rows to return (newest first). Hard cap 1 000."),
+    limit: int = Query(default=750, ge=1, le=2500, description="Max rows to return (newest first). Default 750 (~3 years daily). Hard cap 2 500."),
     from_date: Optional[str] = Query(default=None, description="Oldest bar to include, ISO 8601 (YYYY-MM-DD)."),
     to_date: Optional[str] = Query(default=None, description="Most recent bar to include, ISO 8601 (YYYY-MM-DD)."),
     db: Client = Depends(get_db),
@@ -42,7 +44,7 @@ def get_prices(
 
     Args:
         symbol:    Ticker symbol (e.g. ``AAPL``, ``BTC-USD``).
-        limit:     Maximum rows to return (default 200, hard cap 1 000).
+        limit:     Maximum rows to return (default 750, hard cap 2 500).
         from_date: Optional ISO-8601 start date inclusive (e.g. ``2022-01-01``).
         to_date:   Optional ISO-8601 end date inclusive (e.g. ``2024-12-31``).
 

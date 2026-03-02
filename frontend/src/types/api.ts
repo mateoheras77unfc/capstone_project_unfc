@@ -38,7 +38,7 @@ export interface ForecastRequest {
 export interface ForecastResponse {
   symbol: string;
   interval: string;
-  model: string;
+  model?: string;
   periods_ahead: number;
   forecast_horizon_label: string;
   data_points_used: number;
@@ -50,10 +50,48 @@ export interface ForecastResponse {
   model_info: Record<string, any>;
 }
 
+/** Models supported by the metrics / bounds endpoint. */
+export type ForecastModelKey = "base" | "prophet" | "prophet_xgb";
+
+export interface ForecastMetricsRequest {
+  symbol: string;
+  interval?: "1d" | "1wk" | "1mo";
+  last_n_weeks?: number;
+  lookback_window?: number;
+  epochs?: number;
+  confidence_level?: number;
+  models?: ForecastModelKey[];
+  bounds_horizon_periods?: number;
+}
+
+export interface ModelMetricRow {
+  model: string;
+  mae: number;
+  rmse: number;
+  mape: number;
+}
+
+export interface ModelBoundsRow {
+  model: string;
+  lower: number[];
+  forecast: number[];
+  upper: number[];
+}
+
+export interface ForecastMetricsResponse {
+  symbol: string;
+  interval: string;
+  last_n_weeks: number;
+  bounds_horizon_weeks: number;
+  metrics: ModelMetricRow[];
+  bounds: ModelBoundsRow[];
+  error: string | null;
+}
+
 export interface AnalyzeRequest {
   interval?: "1d" | "1wk" | "1mo";
   periods?: number;
-  model?: "base" | "lstm" | "prophet";
+  model?: "base" | "prophet";
   asset_type?: "stock" | "crypto" | "index";
   lookback_window?: number;
   epochs?: number;

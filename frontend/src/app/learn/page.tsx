@@ -6,7 +6,7 @@ const topics = [
     icon: TrendingUp,
     title: "Price Forecasting",
     description:
-      "Understand how EWM, Prophet, and LSTM models predict future stock prices using historical patterns and statistical techniques.",
+      "Understand how EWM, Prophet, and Prophet+XGBoost models predict future stock prices using historical patterns and statistical techniques.",
   },
   {
     icon: PieChart,

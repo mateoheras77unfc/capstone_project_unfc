@@ -1,7 +1,7 @@
 """
 tests/test_forecast_endpoint.py
 ─────────────────────────────────
-HTTP-level tests for POST /api/v1/forecast/{base,lstm,prophet}.
+HTTP-level tests for POST /api/v1/forecast/{base,prophet,prophet-xgb}.
 
 These tests use the ``app_client`` (async HTTPX) and ``mock_db`` fixtures
 from ``conftest.py`` so no real Supabase connection is required.
@@ -16,9 +16,6 @@ Coverage
     - 200 happy path with correct response shape and interval metadata.
     - Symbol normalised to upper-case in the response.
     - 422 for invalid request body (empty symbol, bad periods).
-
-/forecast/lstm
-    - 503 when TensorFlow is not installed (always true in CI).
 
 _horizon_label helper (imported directly)
     - 4 × 1wk → "4 weeks (~1 month ahead)"
@@ -250,54 +247,6 @@ class TestBaseForecastEndpoint:
         )
         assert resp.status_code == 200
         assert resp.json()["interval"] == "1wk"
-
-
-# ── /forecast/lstm ────────────────────────────────────────────────────────────
-
-
-class TestLSTMForecastEndpoint:
-    """HTTP tests for POST /api/v1/forecast/lstm."""
-
-    async def test_503_when_tensorflow_not_installed(
-        self, app_client, mock_db, price_rows_factory
-    ) -> None:
-        """
-        503 should be returned when TensorFlow is absent.
-
-        This test is always run in the default CI environment where TF is not
-        installed. It is skipped automatically if TF happens to be present.
-        """
-        try:
-            import tensorflow  # noqa: F401
-
-            pytest.skip(
-                "TensorFlow is installed — skipping 503 ImportError test"
-            )
-        except ImportError:
-            pass
-
-        configure_forecast_mock(
-            mock_db,
-            asset_rows=[{"id": "abc-123"}],
-            price_rows=price_rows_factory(n=60),
-        )
-        resp = await app_client.post(
-            "/api/v1/forecast/lstm",
-            json={"symbol": "AAPL", "interval": "1wk", "periods": 4},
-        )
-        assert resp.status_code == 503
-        assert "TensorFlow" in resp.json()["detail"]
-
-    async def test_404_propagated_for_unknown_symbol(
-        self, app_client, mock_db
-    ) -> None:
-        """The lstm endpoint should also return 404 for an unknown symbol."""
-        configure_forecast_mock(mock_db, asset_rows=[], price_rows=[])
-        resp = await app_client.post(
-            "/api/v1/forecast/lstm",
-            json={"symbol": "NOSUCHSYM", "interval": "1wk"},
-        )
-        assert resp.status_code == 404
 
 
 # ── /forecast/prophet ─────────────────────────────────────────────────────────

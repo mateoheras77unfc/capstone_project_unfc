@@ -31,14 +31,14 @@ class AnalyzeRequest(BaseModel):
         model:            Which forecasting model to use.
         asset_type:       Used only when creating a new asset record in the
                           database for the first time.
-        lookback_window:  LSTM sequence length (ignored by base and Prophet).
-        epochs:           LSTM training epochs (ignored by base and Prophet).
+        lookback_window:  Optional (ignored by base and Prophet).
+        epochs:           Optional (ignored by base and Prophet).
         confidence_level: Probability mass for the confidence interval.
     """
 
     interval: Literal["1d", "1wk", "1mo"] = "1d"
     periods: int = Field(default=4, ge=1, le=52)
-    model: Literal["base", "lstm", "prophet"] = "base"
+    model: Literal["base", "prophet"] = "base"
     asset_type: Literal["stock", "crypto", "index"] = "stock"
     lookback_window: int = Field(default=20, ge=5, le=60)
     epochs: int = Field(default=50, ge=10, le=200)

@@ -1,6 +1,9 @@
 """
 Shared config, data loading, backtest, and metrics for experiments-pool.
-All models use the same TEST_SIZE and walk-forward one-step backtest for fair comparison.
+- Daily data (INTERVAL="1d"). Asset pool by sector: TRAIN_TICKERS (1–2 per sector) for training,
+  TEST_TICKERS (1–2 held out) for evaluation only.
+- All models use TEST_SIZE=60 days, 21-step direct forecast, rolling backtest (step 7 days);
+  metrics averaged over mini-windows. Backtest is run only on TEST_TICKERS.
 """
 from pathlib import Path
 import numpy as np
@@ -13,24 +16,34 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
 ARTIFACTS_DIR = Path(__file__).resolve().parent / "artifacts"
 
-# Ticker pool: crypto, stocks, ETF
-TICKERS = [
-    "BTC-USD", "ETH-USD",   # crypto
-    "NVDA", "AAPL", "MSFT", # stocks
-    "SPY", "QQQ",           # ETF
-]
-INTERVAL = "1wk"
+# Asset pool by sector: 1–2 per sector for training, 1–2 held out for testing. Data is daily.
+SECTORS = {
+    "technology": ["AAPL", "MSFT"],
+    "financials": ["JPM"],
+    "healthcare": ["JNJ"],
+    "consumer": ["WMT"],
+    "etf": ["SPY"],
+}
+# Training assets (1–2 per sector); backtest is run only on test assets
+TRAIN_TICKERS = ["AAPL", "JPM", "JNJ", "WMT"]   # tech, financials, healthcare, consumer
+TEST_TICKERS = ["MSFT", "SPY"]                   # held-out: tech, etf
+TICKERS = TRAIN_TICKERS + TEST_TICKERS
+
+INTERVAL = "1d"
 PERIOD = "5y"
 
-# Same backtest for all models
-TEST_SIZE = 30
+# 21-day-ahead rolling backtest: 60-day test window, predict 21 days, move by 7 days
+TEST_SIZE = 60
+FORECAST_HORIZON = 21
+ROLLING_STEP = 7
 MIN_TRAIN_BASELINE = 20   # EWM span
 MIN_TRAIN_PROPHET = 10
 MIN_CONTEXT_CHRONOS = 64
+MIN_TRAIN_STACK = 100    # XGB+LSTM stack (need MACD 26 + seq_len + horizon)
 
 
-def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=False):
-    """Download yfinance for each ticker, stack into one DataFrame with columns: timestamp, symbol, close[, vix]."""
+def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=False, with_volume=False):
+    """Download yfinance for each ticker, stack into one DataFrame with columns: timestamp, symbol, close[, vix][, volume]."""
     tickers = tickers or TICKERS
     rows = []
     for sym in tickers:
@@ -42,9 +55,14 @@ def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=Fals
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             df = df.rename(columns={"Date": "timestamp", "Close": "close"})
+            if "Volume" in df.columns:
+                df = df.rename(columns={"Volume": "volume"})
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df["symbol"] = sym
-            df = df[["timestamp", "symbol", "close"]].dropna()
+            cols = ["timestamp", "symbol", "close"]
+            if with_volume and "volume" in df.columns:
+                cols.append("volume")
+            df = df[cols].dropna()
             rows.append(df)
         except Exception as e:
             print(f"Skip {sym}: {e}")
@@ -97,6 +115,55 @@ def backtest_one_step(prices_full: pd.Series, test_size: int, model_factory, min
     return pd.DataFrame(preds)
 
 
+def backtest_21d_rolling(
+    prices_full: pd.Series,
+    test_window: int,
+    horizon: int,
+    step: int,
+    min_train: int,
+    get_forecast_fn,
+):
+    """
+    Rolling 21-day-ahead backtest within a fixed test window.
+    Start at beginning of test window, predict next `horizon` steps; move forward by `step`;
+    repeat until start + horizon would exceed test window. Returns DataFrame with
+    timestamp, y_true, y_pred, window_ix (for averaging metrics per mini-window).
+    get_forecast_fn(context_series, horizon) -> list of horizon floats (point forecasts).
+    """
+    n = len(prices_full)
+    if n < test_window + min_train:
+        return pd.DataFrame(columns=["timestamp", "y_true", "y_pred", "window_ix"])
+    split_idx = n - test_window
+    train = prices_full.iloc[:split_idx]
+    test = prices_full.iloc[split_idx:]
+    test_index = test.index
+    test_values = test.values
+    preds = []
+    window_ix = 0
+    start = 0
+    while start + horizon <= test_window:
+        context = prices_full.iloc[: split_idx + start]
+        if len(context) < min_train:
+            start += step
+            continue
+        try:
+            point_list = get_forecast_fn(context, horizon)
+            if not point_list or len(point_list) < horizon:
+                start += step
+                continue
+            for h in range(horizon):
+                idx = start + h
+                ts = test_index[idx]
+                y_true = float(test_values[idx])
+                y_pred = float(point_list[h])
+                preds.append({"timestamp": ts, "y_true": y_true, "y_pred": y_pred, "window_ix": window_ix})
+        except (TypeError, KeyError, IndexError, ValueError) as e:
+            pass
+        window_ix += 1
+        start += step
+    return pd.DataFrame(preds)
+
+
 def compute_metrics(pred_df):
     """MAE, RMSE, MAPE (same formula for all models)."""
     y = pred_df["y_true"].to_numpy()
@@ -105,6 +172,28 @@ def compute_metrics(pred_df):
     rmse = sqrt(np.mean((y - yhat) ** 2))
     mape = np.mean(np.abs((y - yhat) / np.where(y != 0, y, 1e-8))) * 100
     return {"MAE": float(mae), "RMSE": float(rmse), "MAPE_%": float(mape)}
+
+
+def compute_metrics_averaged_over_windows(pred_df):
+    """
+    For rolling 21d backtest: pred_df has window_ix. Compute MAE, RMSE, MAPE per window,
+    then average across windows. If no window_ix, falls back to single-window (compute_metrics).
+    """
+    if pred_df.empty:
+        return {"MAE": np.nan, "RMSE": np.nan, "MAPE_%": np.nan}
+    if "window_ix" not in pred_df.columns:
+        return compute_metrics(pred_df)
+    mae_list, rmse_list, mape_list = [], [], []
+    for _, grp in pred_df.groupby("window_ix"):
+        m = compute_metrics(grp)
+        mae_list.append(m["MAE"])
+        rmse_list.append(m["RMSE"])
+        mape_list.append(m["MAPE_%"])
+    return {
+        "MAE": float(np.mean(mae_list)),
+        "RMSE": float(np.mean(rmse_list)),
+        "MAPE_%": float(np.mean(mape_list)),
+    }
 
 
 def metrics_to_parquet(metrics_rows, path):

@@ -51,7 +51,7 @@ export interface ForecastResponse {
 }
 
 /** Models supported by the metrics / bounds endpoint. */
-export type ForecastModelKey = "base" | "prophet" | "xgb" | "chronos";
+export type ForecastModelKey = "base" | "prophet" | "chronos";
 
 export interface ForecastMetricsRequest {
   symbol: string;
@@ -91,7 +91,7 @@ export interface ForecastMetricsResponse {
 export interface AnalyzeRequest {
   interval?: "1d" | "1wk" | "1mo";
   periods?: number;
-  model?: "base" | "prophet" | "chronos" | "xgb";
+  model?: "base" | "prophet" | "chronos";
   asset_type?: "stock" | "crypto" | "index";
   lookback_window?: number;
   epochs?: number;

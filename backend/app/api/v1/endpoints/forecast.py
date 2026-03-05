@@ -7,7 +7,6 @@ Routes
 ------
 POST /api/v1/forecast/base       EWM baseline forecast (no GPU needed).
 POST /api/v1/forecast/prophet    Facebook Prophet trend/seasonality forecast.
-POST /api/v1/forecast/xgb    XGB forecast
 POST /api/v1/forecast/chronos    Chronos-2 zero-shot foundation model forecast.
 
 All share identical request and response shapes (ForecastRequest /
@@ -39,7 +38,6 @@ from analytics.forecasting import (
     ChronosForecaster,
     ProphetForecaster,
     SimpleForecaster,
-    XGBoostForecaster,
 )
 from app.api.dependencies import get_db
 from schemas.forecast import (
@@ -248,15 +246,6 @@ def _run_prophet(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     result["model_info"] = model.get_model_info()
     return result
 
-def _run_xgb(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
-    """Run XGBoost forecaster (local xgboost_pool.joblib) synchronously (thread pool)."""
-    model = XGBoostForecaster(confidence_level=req.confidence_level)
-    model.fit(prices)
-    result = model.forecast(periods=req.periods)
-    result["model_info"] = model.get_model_info()
-    return result
-
-
 def _run_chronos(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     """Run ChronosForecaster (Chronos-2) synchronously (called inside thread pool)."""
     if req.lookback_window and len(prices) > req.lookback_window:
@@ -273,31 +262,6 @@ def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, An
     raw = walk_forward_backtest_last_n_weeks(
         prices,
         interval=req.interval,
-        last_n_weeks=req.last_n_weeks,
-        lookback_window=req.lookback_window,
-        epochs=req.epochs,
-        confidence_level=req.confidence_level,
-        models=req.models,
-        bounds_horizon_periods=req.bounds_horizon_periods,
-    )
-    return raw
-
-
-def _run_prophet_xgb(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
-    """Run ProphetXGBForecaster synchronously (called inside thread pool)."""
-    model = ProphetXGBForecaster(confidence_level=req.confidence_level)
-    model.fit(prices)
-    result = model.forecast(periods=req.periods)
-    result["model_info"] = model.get_model_info()
-    return result
-
-
-def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, Any]:
-    """Run walk-forward backtest and bounds; called in thread pool."""
-    interval = req.interval if req.interval in ("1wk", "1mo") else "1wk"
-    raw = walk_forward_backtest_last_n_weeks(
-        prices,
-        interval=interval,
         last_n_weeks=req.last_n_weeks,
         lookback_window=req.lookback_window,
         epochs=req.epochs,
@@ -389,38 +353,6 @@ async def prophet_forecast(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Prophet forecast failed for %s", request.symbol)
-        raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
-
-    return _build_response(result, request, len(prices))
-
-
-@router.post(
-    "/xgb",
-    response_model=ForecastResponse,
-    summary="XGB forecast",
-)
-async def xgb_forecast(
-    request: ForecastRequest,
-    db: Client = Depends(get_db),
-) -> ForecastResponse:
-    """
-    XGBoost (local xgboost_pool.joblib in forecasting folder).
-    """
-    prices = await _fetch_prices(request.symbol, db)
-    _validate_interval_minimums(prices, request.interval, request.symbol)
-
-    loop = asyncio.get_running_loop()
-    try:
-        result = await loop.run_in_executor(_executor, _run_xgb, prices, request)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="XGBoost artifact not found. Copy xgboost_pool.joblib into backend/analytics/forecasting/.",
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        logger.exception("XGB forecast failed for %s", request.symbol)
         raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
 
     return _build_response(result, request, len(prices))

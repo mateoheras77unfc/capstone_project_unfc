@@ -1,7 +1,7 @@
 """
 tests/test_forecast_endpoint.py
 ─────────────────────────────────
-HTTP-level tests for POST /api/v1/forecast/{base,prophet,xgb,chronos}.
+HTTP-level tests for POST /api/v1/forecast/{base,prophet,chronos}.
 
 These tests use the ``app_client`` (async HTTPX) and ``mock_db`` fixtures
 from ``conftest.py`` so no real Supabase connection is required.

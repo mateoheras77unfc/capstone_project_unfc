@@ -20,11 +20,12 @@ import { StockChart } from "./StockChart";
 import { TourButton } from "@/components/TourButton";
 import type { TourStep } from "@/hooks/use-shepherd-tour";
 
-const METRICS_MODEL_ORDER: ForecastModelKey[] = ["base", "prophet", "xgb", "chronos"];
+const METRICS_MODEL_ORDER: ForecastModelKey[] = ["base", "prophet", "chronos"];
 
 function modelDisplayName(key: string): string {
+  if (key === "base") return "Base (EWM)";
+  if (key === "prophet") return "Prophet";
   if (key === "chronos") return "Chronos-2";
-  if (key === "xgb") return "XGBoost";
   return key.replace("_", "+");
 }
 
@@ -49,7 +50,7 @@ const STOCK_TOUR_STEPS: TourStep[] = [
   {
     id: "model-select",
     title: "Forecast Model",
-    text: "Choose between Base (EWM), Prophet, XGBoost, or Chronos-2 (zero-shot foundation model).",
+    text: "Choose between Base (EWM), Prophet, or Chronos-2 (zero-shot foundation model).",
     attachTo: { element: "#tour-stock-model", on: "bottom" },
   },
   {

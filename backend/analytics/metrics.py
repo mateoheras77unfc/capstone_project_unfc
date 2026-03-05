@@ -22,7 +22,6 @@ from analytics.forecasting import (
     ChronosForecaster,
     ProphetForecaster,
     SimpleForecaster,
-    XGBoostForecaster,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,7 @@ FORECAST_HORIZON_DAYS = 21
 ROLLING_STEP_DAYS = 7
 MIN_TRAIN_DAILY = 64  # at least Chronos context; pool uses MIN_TRAIN_BASELINE=20, MIN_CONTEXT_CHRONOS=64
 
-MODELS_LITERAL = Literal["base", "prophet", "xgb", "chronos"]
+MODELS_LITERAL = Literal["base", "prophet", "chronos"]
 
 
 def _mae_rmse_mape(actual: np.ndarray, predicted: np.ndarray) -> Dict[str, float]:
@@ -128,8 +127,6 @@ def _run_backtest_21d_rolling(
                 )
             elif model_name == "prophet":
                 model = ProphetForecaster(confidence_level=confidence_level)
-            elif model_name == "xgb":
-                model = XGBoostForecaster(confidence_level=confidence_level)
             elif model_name == "chronos":
                 model = ChronosForecaster(confidence_level=confidence_level)
             else:
@@ -201,8 +198,6 @@ def _run_walk_forward_one_step(
                 )
             elif model_name == "prophet":
                 model = ProphetForecaster(confidence_level=confidence_level)
-            elif model_name == "xgb":
-                model = XGBoostForecaster(confidence_level=confidence_level)
             elif model_name == "chronos":
                 model = ChronosForecaster(confidence_level=confidence_level)
             else:
@@ -246,8 +241,6 @@ def _run_bounds_forecast(
             )
         elif model_name == "prophet":
             model = ProphetForecaster(confidence_level=confidence_level)
-        elif model_name == "xgb":
-            model = XGBoostForecaster(confidence_level=confidence_level)
         elif model_name == "chronos":
             model = ChronosForecaster(confidence_level=confidence_level)
         else:

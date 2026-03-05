@@ -99,6 +99,50 @@ class ChronosForecaster(BaseForecastor):
         self._is_fitted = True
         logger.info("ChronosForecaster context set with %d samples", len(self._prices))
 
+    def _context_series_for_chronos(self) -> pd.Series:
+        """
+        Return a series with a regular DatetimeIndex so Chronos can infer frequency.
+
+        Chronos2Pipeline.predict_df requires timestamps with inferrable freq (e.g. 'B', 'D', 'W').
+        Daily equity data often has weekends/holidays, so pd.infer_freq() returns None.
+        Resample to a regular range (business-day, weekly, or month-start) and ffill.
+        If the chosen freq yields 0 or too few points (e.g. range < 1 week for 'W-MON'),
+        fall back to denser freqs: 'B' then 'D'.
+        """
+        raw = self._prices.astype(float)
+        ts = raw.index
+        if ts.tz is not None:
+            ts = ts.tz_localize(None)
+        ts = pd.to_datetime(ts)
+        inferred = pd.infer_freq(ts)
+        if inferred is not None:
+            return raw
+        # Reindex uses label matching: idx must match raw's index. Use naive index so
+        # reindex(idx) finds matches (idx is built from ts which is naive).
+        raw_naive = pd.Series(raw.values, index=ts, dtype=float)
+        # Try freqs from coarsest that matches _freq_days; fall back to denser if too few points.
+        if self._freq_days <= 2:
+            freq_candidates: List[str] = ["B", "D"]
+        elif self._freq_days <= 10:
+            freq_candidates = ["W-MON", "B", "D"]
+        else:
+            freq_candidates = ["MS", "W-MON", "B", "D"]
+        span_days = (ts.max() - ts.min()).days
+        last_len = 0
+        for freq_str in freq_candidates:
+            idx = pd.date_range(ts.min(), ts.max(), freq=freq_str)
+            if len(idx) == 0:
+                continue
+            regular = raw_naive.reindex(idx).ffill().bfill()
+            if regular.isna().any():
+                regular = regular.dropna()
+            last_len = len(regular)
+            if last_len >= 32:
+                return regular
+        raise ValueError(
+            f"After resampling (tried {freq_candidates!r}) at most {last_len} points in span {span_days}d; need at least 32."
+        )
+
     def forecast(self, periods: int = 4) -> Dict[str, Any]:
         """
         Generate multi-step quantile forecasts from Chronos-2.
@@ -111,9 +155,10 @@ class ChronosForecaster(BaseForecastor):
 
         pipeline = self._get_pipeline()
 
-        # Build context DataFrame: Chronos2Pipeline.predict_df expects
-        # timestamp_column and target; for single series we use a constant id.
-        ts = self._prices.index
+        # Build context DataFrame: Chronos2Pipeline.predict_df expects timestamps
+        # with inferrable frequency. Use regularized series when raw index has gaps.
+        context_series = self._context_series_for_chronos()
+        ts = context_series.index
         if ts.tz is not None:
             ts = ts.tz_localize(None)
         ts = pd.to_datetime(ts)
@@ -121,7 +166,7 @@ class ChronosForecaster(BaseForecastor):
             {
                 "id": "series_0",
                 "timestamp": ts,
-                "target": np.asarray(self._prices.values, dtype=np.float64),
+                "target": np.asarray(context_series.values, dtype=np.float64),
             }
         )
         context_df = context_df.sort_values("timestamp").reset_index(drop=True)

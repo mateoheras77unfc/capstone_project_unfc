@@ -7,7 +7,7 @@ Routes
 ------
 POST /api/v1/forecast/base       EWM baseline forecast (no GPU needed).
 POST /api/v1/forecast/prophet    Facebook Prophet trend/seasonality forecast.
-POST /api/v1/forecast/xgb    XGB forecast (Prophet + XGBoost residual correction).
+POST /api/v1/forecast/xgb    XGB forecast
 POST /api/v1/forecast/chronos    Chronos-2 zero-shot foundation model forecast.
 
 All share identical request and response shapes (ForecastRequest /
@@ -283,6 +283,31 @@ def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, An
     return raw
 
 
+def _run_prophet_xgb(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
+    """Run ProphetXGBForecaster synchronously (called inside thread pool)."""
+    model = ProphetXGBForecaster(confidence_level=req.confidence_level)
+    model.fit(prices)
+    result = model.forecast(periods=req.periods)
+    result["model_info"] = model.get_model_info()
+    return result
+
+
+def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, Any]:
+    """Run walk-forward backtest and bounds; called in thread pool."""
+    interval = req.interval if req.interval in ("1wk", "1mo") else "1wk"
+    raw = walk_forward_backtest_last_n_weeks(
+        prices,
+        interval=interval,
+        last_n_weeks=req.last_n_weeks,
+        lookback_window=req.lookback_window,
+        epochs=req.epochs,
+        confidence_level=req.confidence_level,
+        models=req.models,
+        bounds_horizon_periods=req.bounds_horizon_periods,
+    )
+    return raw
+
+
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -419,7 +444,7 @@ async def chronos_forecast(
     prices = await _fetch_prices(request.symbol, db)
     _validate_interval_minimums(prices, request.interval, request.symbol)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         result = await loop.run_in_executor(_executor, _run_chronos, prices, request)
     except ImportError as exc:

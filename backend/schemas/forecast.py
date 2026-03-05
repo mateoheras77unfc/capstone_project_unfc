@@ -1,7 +1,7 @@
 """
 Pydantic schemas for forecast request / response.
 
-Forecast endpoints (base, prophet, xgb) share identical I/O
+Forecast endpoints (base, prophet, xgb, chronos) share identical I/O
 shapes so the frontend only needs to change the URL to switch models.
 """
 

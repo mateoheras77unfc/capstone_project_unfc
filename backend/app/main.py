@@ -16,6 +16,7 @@ GET  /api/v1/prices/{symbol}     Historical OHLCV data
 POST /api/v1/forecast/base       EWM baseline forecast
 POST /api/v1/forecast/prophet    Facebook Prophet forecast
 POST /api/v1/forecast/xgb    XGB forecast
+POST /api/v1/forecast/chronos Chronos-2 forecast
 
 OpenAPI docs
 ------------

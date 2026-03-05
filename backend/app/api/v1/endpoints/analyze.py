@@ -291,7 +291,7 @@ async def analyze(
     {
       "interval":   "1wk",     // "1wk" | "1mo"
       "periods":    4,          // 1–52 steps forward
-      "model":      "base",     // "base" | "prophet" | "chronos"
+      "model":      "base",     // "base" | "prophet" | "chronos" | "xgb"
       "asset_type": "stock"     // "stock" | "crypto" | "index"
     }
     ```

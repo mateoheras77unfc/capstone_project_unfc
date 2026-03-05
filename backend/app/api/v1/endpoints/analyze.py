@@ -47,7 +47,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import ProphetForecaster, SimpleForecaster
+from analytics.forecasting import ChronosForecaster, ProphetForecaster, SimpleForecaster
 from app.api.dependencies import get_db
 from data_engine.coordinator import DataCoordinator
 from schemas.analyze import AnalyzeRequest, AnalyzeResponse, SyncSummary
@@ -237,17 +237,13 @@ def _run_model(
         ``upper_bound``, ``confidence_level``, and ``model_info``.
 
     Raises:
-        ImportError: TensorFlow absent (lstm) or prophet absent (prophet).
+        ImportError: prophet or chronos-forecasting absent when that model is requested.
         ValueError:  Not enough data for the model's lookback requirement.
     """
-    if req.model == "lstm":
-        model = LSTMForecastor(
-            lookback_window=req.lookback_window,
-            epochs=req.epochs,
-            confidence_level=req.confidence_level,
-        )
-    elif req.model == "prophet":
+    if req.model == "prophet":
         model = ProphetForecaster(confidence_level=req.confidence_level)
+    elif req.model == "chronos":
+        model = ChronosForecaster(confidence_level=req.confidence_level)
     else:  # "base" (default)
         # Use at least 60-day span so EWM is a smoothed "recent average", not overly tilted to last few weeks
         span = min(max(req.lookback_window, 60), len(prices) - 1)
@@ -295,7 +291,7 @@ async def analyze(
     {
       "interval":   "1wk",     // "1wk" | "1mo"
       "periods":    4,          // 1–52 steps forward
-      "model":      "base",     // "base" | "prophet"
+      "model":      "base",     // "base" | "prophet" | "chronos"
       "asset_type": "stock"     // "stock" | "crypto" | "index"
     }
     ```
@@ -410,7 +406,7 @@ async def analyze(
         logger.exception("Forecast failed for %s (model=%s)", symbol, request.model)
         raise HTTPException(
             status_code=500,
-            detail="Forecast computation failed unexpectedly.",
+            detail=str(exc) or "Forecast computation failed unexpectedly.",
         ) from exc
 
     # ── 6. Assemble and return the unified response ───────────────────────

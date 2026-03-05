@@ -104,6 +104,9 @@ accelerate>=0.26
 # Often exceeds free-tier limits
 # Not designed for lightweight web dynos
 
+# Chronos-2: zero-shot time-series forecasting (optional; install when using /forecast/chronos)
+chronos-forecasting>=2.0
+
 # SECOND ISSUE: Prophet ALSO heavy
 # prophet pulls:
 # cmdstanpy

@@ -34,7 +34,7 @@ interface StockChartProps {
   compareAll?: boolean;
   setCompareAll?: (value: boolean) => void;
   /** Called after a successful forecast with the model used; parent can load metrics for that model. */
-  onForecastComplete?: (model: "base" | "prophet" | "prophet_xgb") => void;
+  onForecastComplete?: (model: "base" | "prophet" | "xgb" | "chronos") => void;
   metricsLoading?: boolean;
 }
 
@@ -48,7 +48,7 @@ export function StockChart({
   onForecastComplete,
   metricsLoading = false,
 }: StockChartProps) {
-  const [model, setModel] = useState<"base" | "prophet" | "prophet_xgb">("base");
+  const [model, setModel] = useState<"base" | "prophet" | "xgb" | "chronos">("base");
   const [interval, setInterval] = useState<"1d" | "1wk" | "1mo">("1d");
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -168,8 +168,15 @@ export function StockChart({
     setIsLoading(true);
     const periods = forecastDays ?? 7;
     try {
-      if (model === "prophet_xgb") {
-        const res = await api.forecastProphetXgb({
+      if (model === "xgb") {
+        const res = await api.forecastXgb({
+          symbol,
+          interval: "1d",
+          periods,
+        });
+        setForecast(res);
+      } else if (model === "chronos") {
+        const res = await api.forecastChronos({
           symbol,
           interval: "1d",
           periods,
@@ -183,7 +190,7 @@ export function StockChart({
         });
         setForecast(res);
       }
-      const label = model === "prophet_xgb" ? "Prophet + XGBoost" : model.toUpperCase();
+      const label = model === "xgb" ? "XGBoost" : model === "chronos" ? "Chronos-2" : model.toUpperCase();
       toast({
         title: "Analysis Complete",
         description: `Forecast generated using ${label} model.`,
@@ -230,7 +237,8 @@ export function StockChart({
               <SelectContent>
                 <SelectItem value="base">Base (EWM)</SelectItem>
                 <SelectItem value="prophet">Prophet</SelectItem>
-                <SelectItem value="prophet_xgb">Prophet + XGBoost</SelectItem>
+                <SelectItem value="xgb">XGBoost</SelectItem>
+                <SelectItem value="chronos">Chronos-2</SelectItem>
               </SelectContent>
             </Select>
           </div>

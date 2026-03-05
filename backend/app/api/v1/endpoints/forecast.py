@@ -7,9 +7,10 @@ Routes
 ------
 POST /api/v1/forecast/base       EWM baseline forecast (no GPU needed).
 POST /api/v1/forecast/prophet    Facebook Prophet trend/seasonality forecast.
-POST /api/v1/forecast/prophet-xgb Prophet + XGBoost residual correction.
+POST /api/v1/forecast/xgb    XGB forecast (Prophet + XGBoost residual correction).
+POST /api/v1/forecast/chronos    Chronos-2 zero-shot foundation model forecast.
 
-All three share identical request and response shapes (ForecastRequest /
+All share identical request and response shapes (ForecastRequest /
 ForecastResponse) so the frontend only needs to change the URL to switch
 models.
 
@@ -34,7 +35,12 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import ProphetForecaster, SimpleForecaster, Chronos2Forecaster
+from analytics.forecasting import (
+    ChronosForecaster,
+    ProphetForecaster,
+    SimpleForecaster,
+    XGBoostForecaster,
+)
 from app.api.dependencies import get_db
 from schemas.forecast import (
     INTERVAL_CONFIG,
@@ -242,16 +248,20 @@ def _run_prophet(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
     result["model_info"] = model.get_model_info()
     return result
 
-def _run_chronos2(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
-    """
-    Run Chronos-2 synchronously (called inside thread pool).
-    Uses req.lookback_window as a context cap for predictable latency.
-    """
-    # Optional: cap series length by lookback_window for speed
+def _run_xgb(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
+    """Run XGBoost forecaster (local xgboost_pool.joblib) synchronously (thread pool)."""
+    model = XGBoostForecaster(confidence_level=req.confidence_level)
+    model.fit(prices)
+    result = model.forecast(periods=req.periods)
+    result["model_info"] = model.get_model_info()
+    return result
+
+
+def _run_chronos(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
+    """Run ChronosForecaster (Chronos-2) synchronously (called inside thread pool)."""
     if req.lookback_window and len(prices) > req.lookback_window:
         prices = prices.iloc[-req.lookback_window :]
-
-    model = Chronos2Forecaster(confidence_level=req.confidence_level)
+    model = ChronosForecaster(confidence_level=req.confidence_level)
     model.fit(prices)
     result = model.forecast(periods=req.periods)
     result["model_info"] = model.get_model_info()
@@ -259,11 +269,10 @@ def _run_chronos2(prices: pd.Series, req: ForecastRequest) -> Dict[str, Any]:
 
 
 def _run_metrics(prices: pd.Series, req: ForecastMetricsRequest) -> Dict[str, Any]:
-    """Run walk-forward backtest and bounds; called in thread pool."""
-    interval = req.interval if req.interval in ("1wk", "1mo") else "1wk"
+    """Run backtest and bounds; uses pool logic (21d rolling) when interval=1d, else 1-step."""
     raw = walk_forward_backtest_last_n_weeks(
         prices,
-        interval=interval,
+        interval=req.interval,
         last_n_weeks=req.last_n_weeks,
         lookback_window=req.lookback_window,
         epochs=req.epochs,
@@ -360,25 +369,72 @@ async def prophet_forecast(
     return _build_response(result, request, len(prices))
 
 
-@router.post("/chronos2", response_model=ForecastResponse, summary="Chronos-2 foundation model forecast")
-async def chronos2_forecast(
+@router.post(
+    "/xgb",
+    response_model=ForecastResponse,
+    summary="XGB forecast",
+)
+async def xgb_forecast(
     request: ForecastRequest,
     db: Client = Depends(get_db),
 ) -> ForecastResponse:
+    """
+    XGBoost (local xgboost_pool.joblib in forecasting folder).
+    """
     prices = await _fetch_prices(request.symbol, db)
     _validate_interval_minimums(prices, request.interval, request.symbol)
 
     loop = asyncio.get_running_loop()
     try:
-        result = await loop.run_in_executor(_executor, _run_chronos2, prices, request)
-        return _build_response(result, request, len(prices))
-    except ImportError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        result = await loop.run_in_executor(_executor, _run_xgb, prices, request)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="XGBoost artifact not found. Copy xgboost_pool.joblib into backend/analytics/forecasting/.",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
-        logger.exception("Chronos-2 forecast failed")
-        raise HTTPException(status_code=500, detail=f"Forecast error: {exc}")
+        logger.exception("XGB forecast failed for %s", request.symbol)
+        raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
+
+    return _build_response(result, request, len(prices))
+
+
+@router.post(
+    "/chronos",
+    response_model=ForecastResponse,
+    summary="Chronos-2 zero-shot forecast",
+)
+async def chronos_forecast(
+    request: ForecastRequest,
+    db: Client = Depends(get_db),
+) -> ForecastResponse:
+    """
+    Chronos-2 foundation model zero-shot forecast.
+
+    No training; uses pretrained weights for multi-step quantile forecasts.
+    Works on CPU; set device_map for GPU if available.
+    """
+    prices = await _fetch_prices(request.symbol, db)
+    _validate_interval_minimums(prices, request.interval, request.symbol)
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(_executor, _run_chronos, prices, request)
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="'chronos-forecasting' is not installed. pip install \"chronos-forecasting>=2.0\"",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Chronos forecast failed for %s: %s", request.symbol, exc)
+        detail = str(exc) or "Forecast computation failed"
+        raise HTTPException(status_code=500, detail=detail) from exc
+
+    return _build_response(result, request, len(prices))
 
 
 @router.post(

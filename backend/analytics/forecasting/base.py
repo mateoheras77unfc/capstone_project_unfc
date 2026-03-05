@@ -49,7 +49,8 @@ class BaseForecastor(ABC):
     @abstractmethod
     def forecast(self, periods: int = 4) -> Dict[str, Any]:
         """
-        Generate forward-looking forecasts.
+        Generate forward-looking forecasts (direct multi-step: all ``periods`` from the
+        same fitted context; no recursive use of prior-step predictions as inputs).
 
         Args:
             periods: Number of future time steps to predict.

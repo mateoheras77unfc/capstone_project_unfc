@@ -20,7 +20,13 @@ import { StockChart } from "./StockChart";
 import { TourButton } from "@/components/TourButton";
 import type { TourStep } from "@/hooks/use-shepherd-tour";
 
-const METRICS_MODEL_ORDER: ForecastModelKey[] = ["base", "prophet", "prophet_xgb"];
+const METRICS_MODEL_ORDER: ForecastModelKey[] = ["base", "prophet", "xgb", "chronos"];
+
+function modelDisplayName(key: string): string {
+  if (key === "chronos") return "Chronos-2";
+  if (key === "xgb") return "XGBoost";
+  return key.replace("_", "+");
+}
 
 const STOCK_TOUR_STEPS: TourStep[] = [
   {
@@ -43,7 +49,7 @@ const STOCK_TOUR_STEPS: TourStep[] = [
   {
     id: "model-select",
     title: "Forecast Model",
-    text: "Choose between Base (fast exponential smoothing), Prophet (trend + seasonality), or Prophet + XGBoost.",
+    text: "Choose between Base (EWM), Prophet, XGBoost, or Chronos-2 (zero-shot foundation model).",
     attachTo: { element: "#tour-stock-model", on: "bottom" },
   },
   {
@@ -378,10 +384,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
             </CardHeader>
             <CardContent className="pt-0">
               <p className="text-sm text-muted-foreground mb-3 min-h-[2.5rem]">
-                Walk-forward 1-step backtest over the last 20 weeks. Lower values indicate better accuracy.
-                {compareAll
-                  ? " Compare all: each model loads as it finishes."
-                  : ` Single model (${selectedModel}): one request.`}
+                Rolling 60-day, 1-week step forward backtest. Lower values indicate better accuracy.
               </p>
               {metrics?.error && (
                 <p className="text-sm text-amber-600 dark:text-amber-400">{metrics.error}</p>
@@ -411,7 +414,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
                         const loading = inProgressModels.includes(modelKey as ForecastModelKey);
                         return (
                           <tr key={modelKey} className="border-b border-border/50">
-                            <td className="py-2 capitalize">{modelKey.replace("_", "+")}</td>
+                            <td className="py-2">{modelDisplayName(modelKey)}</td>
                             {loading ? (
                               <td className="text-right py-2" colSpan={3}>
                                 <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -473,7 +476,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
                         if (loading) {
                           return (
                             <tr key={modelKey} className="border-b border-border/50">
-                              <td className="py-2 capitalize">{modelKey.replace("_", "+")}</td>
+                              <td className="py-2">{modelDisplayName(modelKey)}</td>
                               <td className="text-right py-2" colSpan={3}>
                                 <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -492,7 +495,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
                             : 0;
                         return (
                           <tr key={b.model} className="border-b border-border/50">
-                            <td className="py-2 capitalize">{b.model.replace("_", "+")}</td>
+                            <td className="py-2">{modelDisplayName(b.model)}</td>
                             <td className="text-right py-2">${lowest.toFixed(2)}</td>
                             <td className="text-right py-2">${highest.toFixed(2)}</td>
                             <td className="text-right py-2 font-medium">${avg.toFixed(2)}</td>

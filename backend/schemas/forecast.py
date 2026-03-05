@@ -1,7 +1,7 @@
 """
 Pydantic schemas for forecast request / response.
 
-Forecast endpoints (base, prophet, prophet-xgb) share identical I/O
+Forecast endpoints (base, prophet, xgb) share identical I/O
 shapes so the frontend only needs to change the URL to switch models.
 """
 
@@ -118,7 +118,7 @@ class ForecastMetricsRequest(BaseModel):
     lookback_window: int = Field(default=20, ge=5, le=60)
     epochs: int = Field(default=30, ge=10, le=200)
     confidence_level: float = Field(default=0.95, ge=0.5, le=0.99)
-    models: Optional[List[Literal["base", "prophet", "prophet_xgb"]]] = Field(
+    models: Optional[List[Literal["base", "prophet", "xgb", "chronos"]]] = Field(
         default=None,
         description="Models to run. Default is base+prophet only for faster response.",
     )

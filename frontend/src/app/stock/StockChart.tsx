@@ -48,7 +48,7 @@ export function StockChart({
   onForecastComplete,
   metricsLoading = false,
 }: StockChartProps) {
-  const [model, setModel] = useState<"base">("base");
+  const [model, setModel] = useState<"chronos">("chronos");
   const [interval, setInterval] = useState<"1d" | "1wk" | "1mo">("1d");
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);

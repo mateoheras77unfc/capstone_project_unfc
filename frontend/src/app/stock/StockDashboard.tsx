@@ -20,7 +20,7 @@ import { StockChart } from "./StockChart";
 import { TourButton } from "@/components/TourButton";
 import type { TourStep } from "@/hooks/use-shepherd-tour";
 
-const METRICS_MODEL_ORDER: ForecastModelKey[] = ["base", "prophet", "prophet_xgb"];
+const METRICS_MODEL_ORDER: ForecastModelKey[] = ["chronos"];
 
 const STOCK_TOUR_STEPS: TourStep[] = [
   {
@@ -43,7 +43,7 @@ const STOCK_TOUR_STEPS: TourStep[] = [
   {
     id: "model-select",
     title: "Forecast Model",
-    text: "Choose between Base (fast exponential smoothing), Prophet (trend + seasonality), or Prophet + XGBoost.",
+    text: "Choose Base (fast exponential smoothing) for forecasts.",
     attachTo: { element: "#tour-stock-model", on: "bottom" },
   },
   {
@@ -89,7 +89,7 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
   const [metricsInterval, setMetricsInterval] = useState<"1wk" | "1mo">("1wk");
   const [forecastDays, setForecastDays] = useState<7 | 14 | 21>(7);
   const [compareAll, setCompareAll] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ForecastModelKey>("base");
+  const [selectedModel, setSelectedModel] = useState<ForecastModelKey>("chronos");
 
   const handleSelect = (symbol: string) => {
     setMetrics(null);
@@ -378,10 +378,10 @@ export function StockDashboard({ assets, initialSymbol, initialPrices, initialSt
             </CardHeader>
             <CardContent className="pt-0">
               <p className="text-sm text-muted-foreground mb-3 min-h-[2.5rem]">
-                Walk-forward 1-step backtest over the last 20 weeks. Lower values indicate better accuracy.
+                Walk-forward 60-day Rolling Backtest: Lower values indicate better accuracy.
                 {compareAll
                   ? " Compare all: each model loads as it finishes."
-                  : ` Single model (${selectedModel}): one request.`}
+                  : ` Single model (${selectedModel === "chronos" ? "Chronos" : selectedModel}): one request.`}
               </p>
               {metrics?.error && (
                 <p className="text-sm text-amber-600 dark:text-amber-400">{metrics.error}</p>

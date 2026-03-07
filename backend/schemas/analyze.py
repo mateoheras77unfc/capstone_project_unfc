@@ -3,9 +3,8 @@ schemas/analyze.py
 ───────────────────
 Pydantic schemas for the unified analyze endpoint.
 
-The analyze endpoint combines auto-sync + forecasting into a single
-request/response cycle so the user never has to manually pre-populate
-the database before forecasting.
+The analyze endpoint performs auto-sync from Yahoo Finance and returns
+sync metadata. No forecast model is configured; forecast fields are empty.
 """
 
 from typing import Any, Dict, List, Literal
@@ -21,24 +20,23 @@ class AnalyzeRequest(BaseModel):
       1. Checks whether ``symbol`` already exists in the database.
       2. If not → automatically syncs it from Yahoo Finance.
       3. Validates that enough rows exist for the chosen interval.
-      4. Runs the requested forecast model.
-      5. Returns sync metadata + full forecast in one response.
+      4. Returns sync metadata + empty forecast structure.
 
     Attributes:
-        interval:         Bar interval — drives sync granularity, minimum-
-                          data validation, and forecast horizon labels.
-        periods:          Number of future time steps to forecast.
-        model:            Which forecasting model to use.
+        interval:         Bar interval — drives sync granularity and
+                          minimum-data validation.
+        periods:          Unused (no forecast model).
+        model:            Unused (no forecast model).
         asset_type:       Used only when creating a new asset record in the
                           database for the first time.
-        lookback_window:  Optional (ignored by base and Prophet).
-        epochs:           Optional (ignored by base and Prophet).
+        lookback_window:  Optional (ignored by base/EWM).
+        epochs:           Optional (ignored by base/EWM).
         confidence_level: Probability mass for the confidence interval.
     """
 
     interval: Literal["1d", "1wk", "1mo"] = "1d"
     periods: int = Field(default=4, ge=1, le=52)
-    model: Literal["base", "prophet"] = "base"
+    model: Literal["chronos"] = "chronos"
     asset_type: Literal["stock", "crypto", "index"] = "stock"
     lookback_window: int = Field(default=20, ge=5, le=60)
     epochs: int = Field(default=50, ge=10, le=200)

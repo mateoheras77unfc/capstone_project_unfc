@@ -233,68 +233,17 @@ Return cached OHLCV price history. Results are **newest first**.
 
 ### Forecast
 
-All three forecast endpoints share the same request and response shape.  
-The model is determined by the URL path, not the body.
-
-> **Tip:** Use `POST /analyze/{symbol}` instead if you want auto-sync + forecast in a single call.
-
-#### `POST /forecast/base` — EWM Baseline
-#### `POST /forecast/prophet` — Facebook Prophet
-#### `POST /forecast/lstm` — LSTM Neural Network
-
-**Request body** — [ForecastRequest](#forecastrequest)
-```json
-{
-  "symbol": "AAPL",
-  "interval": "1d",
-  "periods": 8,
-  "lookback_window": 20,
-  "epochs": 50,
-  "confidence_level": 0.95
-}
-```
-
-**Minimum rows required before forecasting:**
-
-| Interval | Minimum rows |
-|----------|--------------|
-| `1d` | 60 (~3 months of trading days) — **default** |
-| `1wk` | 52 (1 year of weekly data) |
-| `1mo` | 24 (2 years of monthly data) |
-
-**Response `200`** — [ForecastResponse](#forecastresponse)
-```json
-{
-  "symbol": "AAPL",
-  "interval": "1wk",
-  "model": "base",
-  "periods_ahead": 8,
-  "forecast_horizon_label": "8 weeks (~2 months ahead)",
-  "data_points_used": 156,
-  "dates": ["2024-01-15T00:00:00", "2024-01-22T00:00:00"],
-  "point_forecast": [186.42, 187.91],
-  "lower_bound": [181.10, 182.30],
-  "upper_bound": [191.74, 193.52],
-  "confidence_level": 0.95,
-  "model_info": { "model_type": "ewm", "span": 20 }
-}
-```
-
-**Errors:**
-- `404` symbol not in database
-- `422` fewer rows than the minimum required
-- `503` LSTM: TensorFlow not installed on server / Prophet: Prophet not installed
+No forecast model is configured. **`POST /forecast/metrics`** returns empty `metrics` and `bounds` so the frontend can call it without error.
 
 ---
 
-### Analyze (Auto-sync + Forecast)
+### Analyze (Auto-sync only)
 
 #### `POST /analyze/{symbol}`
 Single call that:
 1. Checks if the symbol is in the database
 2. Syncs from Yahoo Finance automatically if it is not
-3. Runs the selected forecast model
-4. Returns the full combined response
+3. Returns sync metadata and **empty** forecast structure (no model configured)
 
 This is the **recommended endpoint for the frontend** — no need to call `/sync` separately.
 
@@ -318,6 +267,7 @@ This is the **recommended endpoint for the frontend** — no need to call `/sync
 ```
 
 **Response `200`** — [AnalyzeResponse](#analyzeresponse)
+Sync metadata plus empty forecast fields (no model configured):
 ```json
 {
   "symbol": "AAPL",
@@ -327,16 +277,16 @@ This is the **recommended endpoint for the frontend** — no need to call `/sync
     "message": "Symbol already in database — skipping sync"
   },
   "interval": "1wk",
-  "model": "base",
-  "periods_ahead": 8,
-  "forecast_horizon_label": "8 weeks (~2 months ahead)",
+  "model": "",
+  "periods_ahead": 0,
+  "forecast_horizon_label": "",
   "data_points_used": 156,
-  "dates": ["2024-01-15T00:00:00"],
-  "point_forecast": [186.42],
-  "lower_bound": [181.10],
-  "upper_bound": [191.74],
+  "dates": [],
+  "point_forecast": [],
+  "lower_bound": [],
+  "upper_bound": [],
   "confidence_level": 0.95,
-  "model_info": { "model_type": "ewm", "span": 20 }
+  "model_info": {}
 }
 ```
 
@@ -539,7 +489,7 @@ Each asset is guaranteed a **minimum weight between 5% and 15%** (randomly chose
 |-------|------|---------|
 | `interval` | `"1d"` \| `"1wk"` \| `"1mo"` | `"1d"` |
 | `periods` | int (1–52) | `4` |
-| `model` | `"base"` \| `"lstm"` \| `"prophet"` | `"base"` |
+| `model` | `"base"` | `"base"` |
 | `asset_type` | `"stock"` \| `"crypto"` \| `"index"` | `"stock"` |
 | `lookback_window` | int (5–60) | `20` |
 | `epochs` | int (10–200) | `50` |

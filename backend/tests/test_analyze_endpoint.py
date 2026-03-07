@@ -3,7 +3,7 @@ tests/test_analyze_endpoint.py
 ────────────────────────────────
 HTTP-level tests for POST /api/v1/analyze/{symbol}.
 
-The analyze endpoint combines auto-sync + forecasting in one request:
+The analyze endpoint performs auto-sync and returns empty forecast (no model configured):
   1. Check DB for symbol.
   2. If missing → auto-sync from Yahoo Finance.
   3. Validate minimum row count for the chosen interval.
@@ -203,7 +203,7 @@ class TestAnalyzeForecastOutput:
         with patch(_SYNC_PATCH):
             resp = await app_client.post(
                 "/api/v1/analyze/AAPL",
-                json={"interval": "1wk", "periods": 4, "model": "base"},
+                json={"interval": "1wk", "periods": 4, "model": "chronos"},
             )
 
         assert resp.status_code == 200
@@ -215,25 +215,25 @@ class TestAnalyzeForecastOutput:
         assert "rows_synced" in body["sync"]
         assert "message" in body["sync"]
 
-        # Forecast metadata
+        # Forecast metadata (no model configured — empty forecast)
         assert body["symbol"] == "AAPL"
         assert body["interval"] == "1wk"
-        assert body["model"] == "base"
-        assert body["periods_ahead"] == 4
-        assert "weeks" in body["forecast_horizon_label"]
+        assert body["model"] == "chronos"
+        assert body["periods_ahead"] == 0
+        assert body["forecast_horizon_label"] == ""
         assert body["data_points_used"] == 60
 
-        # Forecast arrays
-        assert len(body["dates"]) == 4
-        assert len(body["point_forecast"]) == 4
-        assert len(body["lower_bound"]) == 4
-        assert len(body["upper_bound"]) == 4
+        # Forecast arrays empty
+        assert body["dates"] == []
+        assert body["point_forecast"] == []
+        assert body["lower_bound"] == []
+        assert body["upper_bound"] == []
         assert isinstance(body["model_info"], dict)
 
     async def test_ci_ordering_lower_le_point_le_upper(
         self, app_client, mock_db, price_rows_factory
     ) -> None:
-        """lower ≤ point ≤ upper must hold for every forecast step."""
+        """No forecast model — forecast arrays are empty."""
         configure_analyze_mock(
             mock_db,
             first_asset_rows=[{"id": "abc-123"}],
@@ -248,14 +248,9 @@ class TestAnalyzeForecastOutput:
 
         assert resp.status_code == 200
         body = resp.json()
-        for step, (lo, pt, hi) in enumerate(
-            zip(body["lower_bound"], body["point_forecast"], body["upper_bound"]),
-            start=1,
-        ):
-            assert lo <= pt <= hi, (
-                f"CI ordering violated at step {step}: "
-                f"lo={lo}, pt={pt}, hi={hi}"
-            )
+        assert body["point_forecast"] == []
+        assert body["lower_bound"] == []
+        assert body["upper_bound"] == []
 
     async def test_interval_reflected_in_response(
         self, app_client, mock_db, price_rows_factory
@@ -276,12 +271,12 @@ class TestAnalyzeForecastOutput:
         assert resp.status_code == 200
         body = resp.json()
         assert body["interval"] == "1mo"
-        assert "months" in body["forecast_horizon_label"]
+        assert body["forecast_horizon_label"] == ""
 
-    async def test_model_reflected_in_response(
+    async def test_model_echoed_in_response(
         self, app_client, mock_db, price_rows_factory
     ) -> None:
-        """The model name from the request must be echoed in the response."""
+        """Response echoes the requested model name (chronos)."""
         configure_analyze_mock(
             mock_db,
             first_asset_rows=[{"id": "abc-123"}],
@@ -291,11 +286,11 @@ class TestAnalyzeForecastOutput:
         with patch(_SYNC_PATCH):
             resp = await app_client.post(
                 "/api/v1/analyze/AAPL",
-                json={"model": "base"},
+                json={"model": "chronos"},
             )
 
         assert resp.status_code == 200
-        assert resp.json()["model"] == "base"
+        assert resp.json()["model"] == "chronos"
 
     async def test_default_request_body_uses_sensible_defaults(
         self, app_client, mock_db, price_rows_factory
@@ -312,9 +307,9 @@ class TestAnalyzeForecastOutput:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["interval"] == "1wk"
-        assert body["model"] == "base"
-        assert body["periods_ahead"] == 4
+        assert body["interval"] == "1d"
+        assert body["model"] == "chronos"
+        assert body["periods_ahead"] == 0
 
 
 # ── Interval minimum validation ────────────────────────────────────────────────

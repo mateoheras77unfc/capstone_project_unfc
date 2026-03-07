@@ -1,7 +1,7 @@
 """
 Pydantic schemas for forecast request / response.
 
-Forecast endpoints (base, prophet, prophet-xgb) share identical I/O
+Forecast endpoint (base/EWM) I/O
 shapes so the frontend only needs to change the URL to switch models.
 """
 
@@ -50,8 +50,8 @@ class ForecastRequest(BaseModel):
         interval:         Bar interval used during sync — drives minimum-
                           data validation and horizon labels.
         periods:          Number of future time steps to forecast.
-        lookback_window:  Optional (ignored by EWM / Prophet).
-        epochs:           Optional (ignored by EWM / Prophet).
+        lookback_window:  Optional (ignored by EWM).
+        epochs:           Optional (ignored by EWM).
         confidence_level: Probability mass for the confidence interval.
     """
 
@@ -118,9 +118,9 @@ class ForecastMetricsRequest(BaseModel):
     lookback_window: int = Field(default=20, ge=5, le=60)
     epochs: int = Field(default=30, ge=10, le=200)
     confidence_level: float = Field(default=0.95, ge=0.5, le=0.99)
-    models: Optional[List[Literal["base", "prophet", "prophet_xgb"]]] = Field(
+    models: Optional[List[Literal["chronos"]]] = Field(
         default=None,
-        description="Models to run. Default is base+prophet only for faster response.",
+        description="Models to run. Default is chronos.",
     )
     bounds_horizon_periods: Optional[int] = Field(
         default=None,

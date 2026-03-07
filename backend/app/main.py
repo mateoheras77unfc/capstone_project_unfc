@@ -13,9 +13,6 @@ GET  /                           Health check  (no auth)
 GET  /api/v1/assets/             List cached assets
 POST /api/v1/assets/sync/{sym}   Sync a symbol from Yahoo Finance
 GET  /api/v1/prices/{symbol}     Historical OHLCV data
-POST /api/v1/forecast/base       EWM baseline forecast
-POST /api/v1/forecast/prophet    Facebook Prophet forecast
-POST /api/v1/forecast/prophet-xgb Prophet + XGBoost forecast
 
 OpenAPI docs
 ------------

@@ -1,7 +1,7 @@
 """
 app/api/v1/endpoints/analyze.py
 ─────────────────────────────────
-Unified analyze endpoint — auto-sync + forecast in one request.
+Unified analyze endpoint — auto-sync only (no forecast model configured).
 
 Route
 -----
@@ -15,26 +15,21 @@ Flow
    - **Hit**  → skip sync; ``sync.performed = False``.
 3. Validate minimum row count for the chosen ``interval``
    (52 rows for ``1wk``, 24 rows for ``1mo``).
-4. Run the requested forecast model in a thread-pool executor
-   (training is CPU-bound — must not block the event loop).
-5. Return a single ``AnalyzeResponse`` combining sync metadata and
-   the full forecast result.
+4. Return sync metadata and empty forecast structure (no model configured).
 
 Error codes
 -----------
 404  Symbol is brand-new AND yfinance has no history for it.
 422  Not enough rows in the DB for the chosen interval.
      Malformed request body (Pydantic validation).
-503  Supabase unreachable / prophet not installed.
+503  Supabase unreachable.
 500  Unexpected internal error.
 
 Design decisions
 ----------------
-- The sync and forecast workers are both offloaded to the same shared
-  ``ThreadPoolExecutor`` because both operations are CPU / network-bound.
-- Helpers that duplicate logic from ``forecast.py`` (``_fetch_prices``,
-  ``_validate_interval_minimums``, ``_horizon_label``) are kept local to
-  avoid cross-module coupling between endpoint files.
+- Sync is offloaded to a shared ``ThreadPoolExecutor`` (I/O-bound).
+- Helpers ``_fetch_prices`` and ``_validate_interval_minimums`` are kept
+  local to avoid cross-module coupling.
 - ``DataCoordinator`` is instantiated once at module load (stateless).
 """
 
@@ -47,7 +42,6 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting import ProphetForecaster, SimpleForecaster
 from app.api.dependencies import get_db
 from data_engine.coordinator import DataCoordinator
 from schemas.analyze import AnalyzeRequest, AnalyzeResponse, SyncSummary
@@ -221,45 +215,16 @@ def _do_sync(symbol: str, asset_type: str, interval: str) -> int:
     return _coordinator.sync_asset(symbol, asset_type, interval)
 
 
-def _run_model(
-    prices: pd.Series,
-    req: AnalyzeRequest,
-) -> Dict[str, Any]:
-    """
-    Train the requested model and return raw forecast output.
-
-    Args:
-        prices: Validated historical price series.
-        req:    Full analyze request (provides model params).
-
-    Returns:
-        Dict with ``dates``, ``point_forecast``, ``lower_bound``,
-        ``upper_bound``, ``confidence_level``, and ``model_info``.
-
-    Raises:
-        ImportError: TensorFlow absent (lstm) or prophet absent (prophet).
-        ValueError:  Not enough data for the model's lookback requirement.
-    """
-    if req.model == "lstm":
-        model = LSTMForecastor(
-            lookback_window=req.lookback_window,
-            epochs=req.epochs,
-            confidence_level=req.confidence_level,
-        )
-    elif req.model == "prophet":
-        model = ProphetForecaster(confidence_level=req.confidence_level)
-    else:  # "base" (default)
-        # Use at least 60-day span so EWM is a smoothed "recent average", not overly tilted to last few weeks
-        span = min(max(req.lookback_window, 60), len(prices) - 1)
-        model = SimpleForecaster(
-            span=span,
-            confidence_level=req.confidence_level,
-        )
-
-    model.fit(prices)
-    result = model.forecast(periods=req.periods)
-    result["model_info"] = model.get_model_info()
-    return result
+def _empty_forecast_result(confidence_level: float) -> Dict[str, Any]:
+    """Return empty forecast structure (no forecast model configured)."""
+    return {
+        "dates": [],
+        "point_forecast": [],
+        "lower_bound": [],
+        "upper_bound": [],
+        "confidence_level": confidence_level,
+        "model_info": {},
+    }
 
 
 # ── endpoint ──────────────────────────────────────────────────────────────────
@@ -268,7 +233,7 @@ def _run_model(
 @router.post(
     "/{symbol}",
     response_model=AnalyzeResponse,
-    summary="Auto-sync + forecast in one request",
+    summary="Auto-sync (no forecast model configured)",
     responses={
         200: {"description": "Forecast returned (sync may or may not have run)"},
         404: {"description": "Symbol not found in Yahoo Finance"},
@@ -283,35 +248,30 @@ async def analyze(
     db: Client = Depends(get_db),
 ) -> AnalyzeResponse:
     """
-    Fetch, cache, and forecast a stock or crypto in a single call.
+    Sync a stock or crypto from Yahoo Finance and return sync metadata.
 
     If ``symbol`` is not yet in the database, historical data is pulled
-    automatically from Yahoo Finance before the forecast runs.  If the
-    symbol already exists, the sync step is skipped and the cached data
-    is used immediately.
+    automatically from Yahoo Finance. If the symbol already exists, the
+    sync step is skipped. No forecast model is configured; forecast
+    fields in the response are empty.
 
-    **Request body** — all fields are optional (defaults shown):
+    **Request body** — all fields optional (defaults shown):
     ```json
     {
-      "interval":   "1wk",     // "1wk" | "1mo"
-      "periods":    4,          // 1–52 steps forward
-      "model":      "base",     // "base" | "prophet"
-      "asset_type": "stock"     // "stock" | "crypto" | "index"
+      "interval":   "1d",       // "1d" | "1wk" | "1mo"
+      "periods":    4,
+      "model":      "chronos",
+      "asset_type": "stock"    // "stock" | "crypto" | "index"
     }
     ```
 
-    Args:
-        symbol:  Ticker symbol (e.g. ``AMZN``, ``BTC-USD``, ``ETH-USD``).
-        request: Forecast and sync parameters.
-        db:      Injected Supabase client.
-
     Returns:
-        Combined sync metadata and full forecast result.
+        Sync metadata plus empty forecast structure (dates, point_forecast, etc. empty).
 
     Raises:
         HTTPException 404: Ticker not recognised by Yahoo Finance.
         HTTPException 422: Too few rows for the requested interval.
-        HTTPException 503: Database unreachable or TF/prophet not installed.
+        HTTPException 503: Database unreachable.
         HTTPException 500: Unexpected internal error.
     """
     symbol = symbol.strip().upper()
@@ -390,28 +350,8 @@ async def analyze(
     # ── 4. Validate minimum data points for the interval ──────────────────
     _validate_interval_minimums(prices, request.interval, symbol)
 
-    # ── 5. Run the forecast model in the thread pool ──────────────────────
-    try:
-        result = await loop.run_in_executor(
-            _executor,
-            _run_model,
-            prices,
-            request,
-        )
-    except ImportError as exc:
-        pkg = "prophet"
-        raise HTTPException(
-            status_code=503,
-            detail=f"'{pkg}' is not installed on this server. Use model='base' instead.",
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Forecast failed for %s (model=%s)", symbol, request.model)
-        raise HTTPException(
-            status_code=500,
-            detail="Forecast computation failed unexpectedly.",
-        ) from exc
+    # ── 5. No forecast model configured — return sync + empty forecast ─────
+    result = _empty_forecast_result(request.confidence_level)
 
     # ── 6. Assemble and return the unified response ───────────────────────
     return AnalyzeResponse(
@@ -419,8 +359,8 @@ async def analyze(
         sync=sync_summary,
         interval=request.interval,
         model=request.model,
-        periods_ahead=request.periods,
-        forecast_horizon_label=_horizon_label(request.periods, request.interval),
+        periods_ahead=0,
+        forecast_horizon_label="",
         data_points_used=len(prices),
         **result,
     )

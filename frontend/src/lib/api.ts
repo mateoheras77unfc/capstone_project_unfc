@@ -75,9 +75,6 @@ export const api = {
   },
 
   // Forecast
-  forecastBase: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/base", { method: "POST", body: JSON.stringify(data) }),
-  forecastProphet: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/prophet", { method: "POST", body: JSON.stringify(data) }),
-  forecastProphetXgb: (data: ForecastRequest) => fetchApi<ForecastResponse>("/forecast/prophet-xgb", { method: "POST", body: JSON.stringify(data) }),
   getForecastMetrics: (data: ForecastMetricsRequest) => fetchApi<ForecastMetricsResponse>("/forecast/metrics", { method: "POST", body: JSON.stringify(data) }),
 
   // Analyze

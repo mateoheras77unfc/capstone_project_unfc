@@ -1,8 +1,7 @@
 """
-analytics — Business logic for forecasting and portfolio optimization.
+analytics — Business logic for portfolio optimization.
 
 Sub-packages
 ------------
-    analytics.forecasting   EWM, Prophet, and Prophet+XGB forecasters.
-    analytics.optimization  (Phase 4) Portfolio optimisation algorithms.
+    analytics.optimization  Portfolio optimisation algorithms.
 """

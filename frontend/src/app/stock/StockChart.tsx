@@ -34,7 +34,7 @@ interface StockChartProps {
   compareAll?: boolean;
   setCompareAll?: (value: boolean) => void;
   /** Called after a successful forecast with the model used; parent can load metrics for that model. */
-  onForecastComplete?: (model: "base" | "prophet" | "prophet_xgb") => void;
+  onForecastComplete?: (model: "chronos") => void;
   metricsLoading?: boolean;
 }
 
@@ -48,7 +48,7 @@ export function StockChart({
   onForecastComplete,
   metricsLoading = false,
 }: StockChartProps) {
-  const [model, setModel] = useState<"base" | "prophet" | "prophet_xgb">("base");
+  const [model, setModel] = useState<"chronos">("chronos");
   const [interval, setInterval] = useState<"1d" | "1wk" | "1mo">("1d");
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,10 +116,9 @@ export function StockChart({
     price: p.close_price,
   }));
 
-  // Forecast overlays on the same chart: separate key so we can style it dashed + distinct color.
-  // Add a connector point so the forecast line starts from the last historical price.
+  // Forecast overlays (only when backend returned non-empty forecast)
   let firstForecastDate: string | null = null;
-  if (forecast && baseData.length > 0) {
+  if (forecast && baseData.length > 0 && forecast.dates.length > 0) {
     const lastHist = baseData[baseData.length - 1];
     chartData.push({
       date: lastHist.timestamp,
@@ -168,25 +167,15 @@ export function StockChart({
     setIsLoading(true);
     const periods = forecastDays ?? 7;
     try {
-      if (model === "prophet_xgb") {
-        const res = await api.forecastProphetXgb({
-          symbol,
-          interval: "1d",
-          periods,
-        });
-        setForecast(res);
-      } else {
-        const res = await api.analyze(symbol, {
-          model,
-          interval: "1d",
-          periods,
-        });
-        setForecast(res);
-      }
-      const label = model === "prophet_xgb" ? "Prophet + XGBoost" : model.toUpperCase();
+      const res = await api.analyze(symbol, {
+        model: "chronos",
+        interval: "1d",
+        periods,
+      });
+      setForecast(res);
       toast({
         title: "Analysis Complete",
-        description: `Forecast generated using ${label} model.`,
+        description: `Forecast generated using ${model === "chronos" ? "Chronos" : model} model.`,
       });
       onForecastComplete?.(model);
     } catch (error: any) {
@@ -223,14 +212,12 @@ export function StockChart({
             </Select>
           </div>
           <div id="tour-stock-model">
-            <Select value={model} onValueChange={(val: any) => setModel(val)}>
+            <Select value={model} onValueChange={(val: string) => setModel(val as "chronos")}>
               <SelectTrigger className="min-w-[200px] w-[200px] h-9">
                 <SelectValue placeholder="Select Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="base">Base (EWM)</SelectItem>
-                <SelectItem value="prophet">Prophet</SelectItem>
-                <SelectItem value="prophet_xgb">Prophet + XGBoost</SelectItem>
+                <SelectItem value="chronos">Chronos</SelectItem>
               </SelectContent>
             </Select>
           </div>

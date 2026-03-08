@@ -1,9 +1,9 @@
 """
 Shared config, data loading, backtest, and metrics for experiments-pool.
-- Daily data (INTERVAL="1d"). Asset pool by sector: TRAIN_TICKERS (1–2 per sector) for training,
-  TEST_TICKERS (1–2 held out) for evaluation only.
+- Daily data (INTERVAL="1d"). Single asset pool: each asset is backtested on its own history
+  (expanding window, last 60 days held out for evaluation).
 - All models use TEST_SIZE=60 days, 21-step direct forecast, rolling backtest (step 7 days);
-  metrics averaged over mini-windows. Backtest is run only on TEST_TICKERS.
+  metrics averaged over mini-windows.
 """
 from pathlib import Path
 import numpy as np
@@ -16,18 +16,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
 ARTIFACTS_DIR = Path(__file__).resolve().parent / "artifacts"
 
-# Asset pool by sector: 1–2 per sector for training, 1–2 held out for testing. Data is daily.
-SECTORS = {
-    "technology": ["AAPL", "MSFT"],
-    "financials": ["JPM"],
-    "healthcare": ["JNJ"],
-    "consumer": ["WMT"],
-    "etf": ["SPY"],
-}
-# Training assets (1–2 per sector); backtest is run only on test assets
-TRAIN_TICKERS = ["AAPL", "JPM", "JNJ", "WMT"]   # tech, financials, healthcare, consumer
-TEST_TICKERS = ["MSFT", "SPY"]                   # held-out: tech, etf
-TICKERS = TRAIN_TICKERS + TEST_TICKERS
+# Asset pool: 10 symbols for load and backtest (per-asset evaluation, no cross-asset training).
+TICKERS = [
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "JPM",
+    "JNJ",
+    "WMT",
+    "SPY",
+    "XOM",
+    "NVDA",
+]
 
 INTERVAL = "1d"
 PERIOD = "5y"
@@ -84,6 +85,26 @@ def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=Fals
             out = out.merge(vix_df, on="timestamp", how="left")
             out["vix"] = out["vix"].ffill().bfill()
     return out
+
+
+def build_pooled_train_stack(stacked: pd.DataFrame, test_size: int, min_train: int = 1):
+    """
+    Build a single DataFrame containing only the "train" portion of each asset:
+    for each symbol, rows from start up to (but not including) the last test_size days.
+    Used for training global models once on pooled data before the rolling backtest.
+    Drops symbols that have fewer than min_train rows in the train portion.
+    """
+    rows = []
+    for sym in stacked["symbol"].unique():
+        grp = stacked[stacked["symbol"] == sym].sort_values("timestamp").reset_index(drop=True)
+        n = len(grp)
+        if n < test_size + min_train:
+            continue
+        train_grp = grp.iloc[: n - test_size].copy()
+        rows.append(train_grp)
+    if not rows:
+        return pd.DataFrame()
+    return pd.concat(rows, ignore_index=True)
 
 
 def backtest_one_step(prices_full: pd.Series, test_size: int, model_factory, min_train: int):

@@ -20,6 +20,28 @@ load_dotenv()
 
 router = APIRouter()
 
+# ── Audio upload limits ────────────────────────────────────────────────────────
+# Maximum allowed audio upload: 25 MB. Requests larger than this are rejected
+# with HTTP 413 before the payload is fully buffered in memory.
+MAX_AUDIO_BYTES: int = 25 * 1024 * 1024  # 25 MB
+
+# Allowlist of MIME types accepted by the transcription endpoint.
+# Only recognisable audio formats that Whisper supports are permitted.
+ALLOWED_AUDIO_CONTENT_TYPES: frozenset = frozenset(
+    {
+        "audio/webm",
+        "audio/wav",
+        "audio/wave",
+        "audio/x-wav",
+        "audio/ogg",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/flac",
+        "audio/x-flac",
+        "audio/aac",
+    }
+)
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are Spark, a friendly and expert financial educator specialized in Canadian banking and investment markets. You help users understand:
 
@@ -190,21 +212,61 @@ async def chat(req: ChatRequest) -> ChatResponse:
 async def transcribe_audio(file: UploadFile = File(...)) -> dict:
     """
     Transcribe voice audio using Groq Whisper.
-    Accepts audio/webm (or any format Whisper supports) and returns the transcript.
+
+    Accepts a small set of audio MIME types (see ``ALLOWED_AUDIO_CONTENT_TYPES``)
+    and enforces a ``MAX_AUDIO_BYTES`` ceiling before forwarding the payload to
+    Groq, preventing memory pressure and unnecessary upstream calls.
+
+    Args:
+        file: The uploaded audio file.
+
+    Returns:
+        A dict with a single ``transcript`` key containing the recognised text.
+
+    Raises:
+        HTTPException 400: Unsupported ``content_type``.
+        HTTPException 413: Upload exceeds ``MAX_AUDIO_BYTES``.
+        HTTPException 500: ``GROQ_API_KEY`` not configured.
+        HTTPException 502: Groq Whisper returned a non-200 response.
     """
     api_key = os.getenv("GROQ_API_KEY")
+
+    # ── Content-type validation ───────────────────────────────────────────────
+    # Strip optional parameters (e.g. "audio/webm; codecs=opus") before
+    # comparing so the check is not defeated by codec suffixes.
+    raw_content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if raw_content_type not in ALLOWED_AUDIO_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported content type '{raw_content_type}'. "
+                f"Allowed types: {sorted(ALLOWED_AUDIO_CONTENT_TYPES)}"
+            ),
+        )
+
+    # ── Size validation ───────────────────────────────────────────────────────
+    # Read one byte beyond the limit so we can detect oversized payloads
+    # without buffering the entire upload into memory.
+    audio_bytes = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Audio file exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB "
+                "maximum allowed size."
+            ),
+        )
+
     if not api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
 
-    audio_bytes = await file.read()
     filename = file.filename or "audio.webm"
-    content_type = file.content_type or "audio/webm"
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {api_key}"},
-            files={"file": (filename, audio_bytes, content_type)},
+            files={"file": (filename, audio_bytes, raw_content_type)},
             data={"model": "whisper-large-v3"},
         )
 

@@ -4,7 +4,7 @@ app/api/v1/endpoints/chat.py
 SparkChat — AI-powered Canadian investment education chatbot.
 Follows the same pattern as all other v1 endpoints in this project.
 
-LLM: Groq (free tier) — set GROQ_API_KEY in your .env
+LLM: Groq (free tier) — set GROQ_API_KEY in your .env also for voice transcription.
 """
 
 import json
@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 load_dotenv()
@@ -183,3 +183,32 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
     reply = resp.json()["choices"][0]["message"]["content"]
     return ChatResponse(reply=reply)
+
+
+# ── Transcription endpoint ─────────────────────────────────────────────────────
+@router.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)) -> dict:
+    """
+    Transcribe voice audio using Groq Whisper.
+    Accepts audio/webm (or any format Whisper supports) and returns the transcript.
+    """
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+
+    audio_bytes = await file.read()
+    filename = file.filename or "audio.webm"
+    content_type = file.content_type or "audio/webm"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"file": (filename, audio_bytes, content_type)},
+            data={"model": "whisper-large-v3"},
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Whisper error: {resp.text}")
+
+    return {"transcript": resp.json().get("text", "")}

@@ -458,8 +458,13 @@ export function SparkChat({ context }: SparkChatProps = {}) {
             onClick={toggleVoiceMode}
             title={
               isVoiceMode
-                ? "Desactivar modo voz"
-                : "Activar conversación por voz"
+                ? "Turn off voice mode"
+                : "Start voice conversation"
+            }
+            aria-label={
+              isVoiceMode
+                ? "Turn off voice mode"
+                : "Start voice conversation"
             }
             className={`p-1.5 rounded-lg transition-all ${
               isVoiceMode

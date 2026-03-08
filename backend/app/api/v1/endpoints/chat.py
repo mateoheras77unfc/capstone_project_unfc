@@ -200,12 +200,23 @@ async def transcribe_audio(file: UploadFile = File(...)) -> dict:
     filename = file.filename or "audio.webm"
     content_type = file.content_type or "audio/webm"
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            files={"file": (filename, audio_bytes, content_type)},
-            data={"model": "whisper-large-v3"},
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                files={"file": (filename, audio_bytes, content_type)},
+                data={"model": "whisper-large-v3"},
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=502,
+            detail="Whisper transcription timed out. Please try again.",
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Network error contacting Whisper API: {exc}",
         )
 
     if resp.status_code != 200:

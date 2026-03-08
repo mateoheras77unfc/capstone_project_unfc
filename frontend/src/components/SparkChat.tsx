@@ -498,6 +498,9 @@ export function SparkChat({ context }: SparkChatProps = {}) {
 
           <button
             onClick={() => {
+              if (isVoiceMode) {
+                toggleVoiceMode();
+              }
               setOpen(false);
               window.speechSynthesis.cancel();
             }}

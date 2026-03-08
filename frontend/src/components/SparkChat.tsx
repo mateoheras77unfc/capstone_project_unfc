@@ -400,8 +400,21 @@ export function SparkChat({ context }: SparkChatProps = {}) {
       {/* Trigger button */}
       <button
         onClick={() => {
-          setOpen((v) => !v);
-          window.speechSynthesis.cancel();
+          setOpen((prevOpen) => {
+            // When closing the chat panel, ensure voice mode is fully disabled
+            if (prevOpen) {
+              if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                window.speechSynthesis.cancel();
+              }
+              if (typeof voiceModeRef !== "undefined" && voiceModeRef?.current) {
+                voiceModeRef.current = false;
+              }
+              if (typeof setIsVoiceMode === "function") {
+                setIsVoiceMode(false);
+              }
+            }
+            return !prevOpen;
+          });
         }}
         aria-label="Toggle SparkChat"
         className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center border transition-all duration-200 shadow-[0_0_24px_rgba(0,212,255,0.25)]

@@ -196,3 +196,82 @@ class OptimizeResponse(BaseModel):
     risk_metrics: OptimizeRiskMetrics
     data_points_used: Dict[str, int]
     shared_data_points: int
+
+
+# ── POST /api/v1/portfolio/simulate ──────────────────────────────────────────
+
+
+class SimulateRequest(_PortfolioBase):
+    """Request body for the portfolio simulation endpoint."""
+
+    weights: Dict[str, float] = Field(
+        ...,
+        description="Optimal asset weights from a prior optimization run (must sum to ~1).",
+    )
+    n_simulations: int = Field(
+        default=500,
+        ge=100,
+        le=2000,
+        description="Number of independent simulation paths (100–2 000).",
+    )
+    n_periods: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=756,
+        description=(
+            "Simulation horizon in bar-interval steps. "
+            "Defaults: 126 for '1d', 26 for '1wk', 6 for '1mo'."
+        ),
+    )
+    initial_value: float = Field(
+        default=10_000.0,
+        gt=0,
+        description="Starting portfolio dollar value for wealth-path projections.",
+    )
+
+
+class SimulationBands(BaseModel):
+    """Percentile fan-chart bands for one simulation method."""
+
+    p5:  List[float]
+    p25: List[float]
+    p50: List[float]
+    p75: List[float]
+    p95: List[float]
+    terminal_values: List[float]  # Raw terminal values for histogram (≤ 500)
+    dates: List[str]              # ISO-8601 projected dates (length = n_periods + 1)
+
+
+class SimulationSummary(BaseModel):
+    """Aggregate statistics derived from one simulation run."""
+
+    prob_positive: float     # Fraction of paths ending above initial_value
+    expected_terminal: float # Mean terminal portfolio value ($)
+    ci_5:  float             # 5th percentile terminal value
+    ci_25: float
+    ci_50: float
+    ci_75: float
+    ci_95: float             # 95th percentile terminal value
+    sortino_ratio: float
+    calmar_ratio:  float
+    omega_ratio:   float
+    max_drawdown:  float     # Worst peak-to-trough drop on the median path
+
+
+class SimulateResponse(BaseModel):
+    """Full response from POST /api/v1/portfolio/simulate."""
+
+    symbols: List[str]
+    interval: str
+    from_date: Optional[str]
+    to_date:   Optional[str]
+    weights:   Dict[str, float]
+    n_simulations: int
+    n_periods:     int
+    initial_value: float
+    monte_carlo: SimulationBands
+    historical:  SimulationBands
+    mc_summary:   SimulationSummary
+    hist_summary: SimulationSummary
+    data_points_used: Dict[str, int]
+    shared_data_points: int

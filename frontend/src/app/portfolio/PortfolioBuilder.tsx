@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, X, DollarSign, TrendingUp, FileDown } from "lucide-react";
+import { Loader2, X, DollarSign, TrendingUp, FileDown, Activity } from "lucide-react";
 import {
   PieChart,
   Pie,
@@ -198,6 +198,20 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
     }
   };
 
+  const handleRunSimulation = () => {
+    if (!results) return;
+    const context = {
+      symbols,
+      weights: results.weights,
+      interval: "1d",
+      from_date: fromDate,
+      to_date: toDate,
+      risk_free_rate: 0.05,
+    };
+    localStorage.setItem("portfolio_simulate_context", JSON.stringify(context));
+    router.push("/portfolio/simulate");
+  };
+
   const pieData = results
     ? Object.entries(results.weights).map(([name, value]) => ({
         name,
@@ -221,14 +235,23 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {results && (
-            <Button
-              variant="outline"
-              onClick={handleExportPdf}
-              className="flex items-center gap-2 h-10 px-4 border-emerald-400/40 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400 hover:text-emerald-300 transition-all font-medium"
-            >
-              <FileDown className="h-4 w-4 shrink-0" />
-              Download PDF
-            </Button>
+            <>
+              <Button
+                onClick={handleRunSimulation}
+                className="flex items-center gap-2 h-10 px-4 bg-violet-600 hover:bg-violet-500 text-white font-medium transition-all"
+              >
+                <Activity className="h-4 w-4 shrink-0" />
+                Run Simulation
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExportPdf}
+                className="flex items-center gap-2 h-10 px-4 border-emerald-400/40 text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400 hover:text-emerald-300 transition-all font-medium"
+              >
+                <FileDown className="h-4 w-4 shrink-0" />
+                Download PDF
+              </Button>
+            </>
           )}
           <TourButton tourKey="tour-portfolio" steps={PORTFOLIO_TOUR_STEPS} />
         </div>
@@ -739,17 +762,17 @@ export function PortfolioBuilder({ assets }: PortfolioBuilderProps) {
               a value above 1.0 is considered good, above 2.0 is excellent.
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "18px" }}>
-              {results.performance?.expected_return != null && (
+              {results.performance?.expected_annual_return != null && (
                 <div style={{ backgroundColor: "#f0fdf4", borderRadius: "8px", padding: "14px 16px", border: "1px solid #bbf7d0" }}>
                   <div style={{ fontSize: "9px", fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "4px" }}>Expected Annual Return</div>
-                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#15803d" }}>{(results.performance.expected_return * 100).toFixed(2)}%</div>
+                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#15803d" }}>{(results.performance.expected_annual_return * 100).toFixed(2)}%</div>
                   <div style={{ fontSize: "9px", color: "#16a34a", marginTop: "4px" }}>The projected annual gain based on historical mean returns weighted by optimal allocation.</div>
                 </div>
               )}
-              {results.performance?.volatility != null && (
+              {results.performance?.annual_volatility != null && (
                 <div style={{ backgroundColor: "#fff1f2", borderRadius: "8px", padding: "14px 16px", border: "1px solid #fecdd3" }}>
                   <div style={{ fontSize: "9px", fontWeight: 700, color: "#be123c", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "4px" }}>Portfolio Volatility</div>
-                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#be123c" }}>{(results.performance.volatility * 100).toFixed(2)}%</div>
+                  <div style={{ fontSize: "22px", fontWeight: 800, color: "#be123c" }}>{(results.performance.annual_volatility * 100).toFixed(2)}%</div>
                   <div style={{ fontSize: "9px", color: "#dc2626", marginTop: "4px" }}>Annualised standard deviation of portfolio returns. Lower = more stable.</div>
                 </div>
               )}

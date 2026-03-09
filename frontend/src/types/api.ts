@@ -133,8 +133,8 @@ export interface OptimizeResponse {
   symbols: string[];
   weights: Record<string, number>;
   performance: {
-    expected_return: number;
-    volatility: number;
+    expected_annual_return: number;
+    annual_volatility: number;
     sharpe_ratio: number;
   };
   efficient_frontier: Array<{
@@ -147,6 +147,59 @@ export interface OptimizeResponse {
     cvar_95: number;
     max_drawdown: number;
   };
+  data_points_used: Record<string, number>;
+  shared_data_points: number;
+}
+
+export interface SimulateRequest {
+  symbols: string[];
+  weights: Record<string, number>;
+  interval?: "1d" | "1wk" | "1mo";
+  risk_free_rate?: number;
+  from_date?: string | null;
+  to_date?: string | null;
+  n_simulations?: number;
+  n_periods?: number | null;
+  initial_value?: number;
+}
+
+export interface SimulationBands {
+  p5:  number[];
+  p25: number[];
+  p50: number[];
+  p75: number[];
+  p95: number[];
+  terminal_values: number[];
+  dates: string[];
+}
+
+export interface SimulationSummary {
+  prob_positive:    number;
+  expected_terminal: number;
+  ci_5:  number;
+  ci_25: number;
+  ci_50: number;
+  ci_75: number;
+  ci_95: number;
+  sortino_ratio: number;
+  calmar_ratio:  number;
+  omega_ratio:   number;
+  max_drawdown:  number;
+}
+
+export interface SimulateResponse {
+  symbols: string[];
+  interval: string;
+  from_date: string | null;
+  to_date:   string | null;
+  weights:   Record<string, number>;
+  n_simulations: number;
+  n_periods:     number;
+  initial_value: number;
+  monte_carlo:  SimulationBands;
+  historical:   SimulationBands;
+  mc_summary:   SimulationSummary;
+  hist_summary: SimulationSummary;
   data_points_used: Record<string, number>;
   shared_data_points: number;
 }

@@ -12,7 +12,7 @@ interface Message {
 
 interface SparkChatProps {
   context?: {
-    type: "portfolio_optimize" | "portfolio_stats" | "forecast" | "analyze";
+    type: "portfolio_optimize" | "portfolio_stats" | "forecast" | "analyze" | "portfolio_simulate";
     data: unknown;
   };
 }

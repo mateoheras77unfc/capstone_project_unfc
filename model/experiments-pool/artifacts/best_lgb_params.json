@@ -1,0 +1,11 @@
+{
+  "reg_lambda": 0.1,
+  "reg_alpha": 0.1,
+  "num_leaves": 63,
+  "n_estimators": 50,
+  "min_child_samples": 20,
+  "max_depth": 3,
+  "learning_rate": 0.005,
+  "random_state": 42,
+  "verbosity": -1
+}

@@ -117,6 +117,40 @@ The user is viewing a {ctx_type} result:
 Summarize the key takeaways in plain language.
 """
 
+    if ctx_type == "portfolio_simulate":
+        symbols = data.get("symbols", [])
+        weights = data.get("weights", {})
+        mc = data.get("mc_summary", {})
+        hist = data.get("hist_summary", {})
+        n_sims = data.get("n_simulations", 0)
+        n_periods = data.get("n_periods", 0)
+        init = data.get("initial_value", 10_000)
+
+        lines = [
+            f"Portfolio Simulation for: {', '.join(symbols)}",
+            f"Weights: {', '.join(f'{s}: {round(w*100,1)}%' for s, w in weights.items())}",
+            f"Starting value: ${init:,.0f} | Horizon: {n_periods} periods | Paths: {n_sims:,}",
+            "",
+            "Monte Carlo GBM results:",
+            f"  Probability of profit: {round(mc.get('prob_positive', 0)*100, 1)}%",
+            f"  Expected final value: ${mc.get('expected_terminal', 0):,.0f}",
+            f"  P5 / Median / P95: ${mc.get('ci_5',0):,.0f} / ${mc.get('ci_50',0):,.0f} / ${mc.get('ci_95',0):,.0f}",
+            f"  Sortino: {round(mc.get('sortino_ratio', 0), 3)} | Calmar: {round(mc.get('calmar_ratio', 0), 3)} | Omega: {round(mc.get('omega_ratio', 0), 3)}",
+            f"  Max drawdown: {round(mc.get('max_drawdown', 0)*100, 2)}%",
+            "",
+            "Historical Bootstrap results:",
+            f"  Probability of profit: {round(hist.get('prob_positive', 0)*100, 1)}%",
+            f"  Expected final value: ${hist.get('expected_terminal', 0):,.0f}",
+            f"  P5 / Median / P95: ${hist.get('ci_5',0):,.0f} / ${hist.get('ci_50',0):,.0f} / ${hist.get('ci_95',0):,.0f}",
+            f"  Sortino: {round(hist.get('sortino_ratio', 0), 3)} | Calmar: {round(hist.get('calmar_ratio', 0), 3)} | Omega: {round(hist.get('omega_ratio', 0), 3)}",
+            f"  Max drawdown: {round(hist.get('max_drawdown', 0)*100, 2)}%",
+            "",
+            "Interpret these simulation results in plain language for a beginner investor. "
+            "Explain what the two methods mean, whether this portfolio looks promising, "
+            "and what the risk metrics indicate.",
+        ]
+        return "\n".join(lines)
+
     return ""
 
 

@@ -42,6 +42,62 @@ MIN_TRAIN_PROPHET = 10
 MIN_CONTEXT_CHRONOS = 64
 MIN_TRAIN_STACK = 100    # XGB+LSTM stack (need MACD 26 + seq_len + horizon)
 
+# Cache file for CNN Fear & Greed so we don't hit the API every run
+FEAR_GREED_CACHE_PATH = ARTIFACTS_DIR / "fear_greed_cnn.parquet"
+
+
+def fetch_cnn_fear_greed_index(limit_days=500, start_date=None, force_refresh=False):
+    """
+    Load CNN Fear & Greed from cache file if present; otherwise fetch from API and save.
+    Returns DataFrame with columns: timestamp, fear_greed.
+    - limit_days: used when start_date is None to compute start from today.
+    - start_date: optional str or datetime; request data from this date (used for API or to filter cache).
+    - force_refresh: if True, fetch from API and overwrite cache.
+    """
+    if not force_refresh and FEAR_GREED_CACHE_PATH.exists():
+        try:
+            df = pd.read_parquet(FEAR_GREED_CACHE_PATH)
+            df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.normalize()
+            if start_date is not None:
+                start = pd.to_datetime(start_date).normalize()
+                df = df[df["timestamp"] >= start].copy()
+            return df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+        except Exception:
+            pass
+    try:
+        import requests
+    except ImportError:
+        return pd.DataFrame(columns=["timestamp", "fear_greed"])
+    if start_date is not None:
+        start_date = pd.to_datetime(start_date).strftime("%Y-%m-%d")
+    else:
+        from datetime import datetime, timezone, timedelta
+        start_date = (datetime.now(timezone.utc) - timedelta(days=limit_days)).strftime("%Y-%m-%d")
+    url = f"https://production.dataviz.cnn.io/index/fearandgreed/graphdata/{start_date}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Referer": "https://www.cnn.com/markets/fear-and-greed",
+        "Origin": "https://www.cnn.com",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return pd.DataFrame(columns=["timestamp", "fear_greed"])
+        data = response.json()
+        fng_data = data.get("fear_and_greed_historical", {}).get("data") or []
+        if not fng_data:
+            return pd.DataFrame(columns=["timestamp", "fear_greed"])
+        fng_df = pd.DataFrame(fng_data)
+        fng_df["timestamp"] = pd.to_datetime(fng_df["x"] / 1000, unit="s").dt.normalize()
+        fng_df = fng_df.rename(columns={"y": "fear_greed"})
+        out = fng_df[["timestamp", "fear_greed"]].drop_duplicates("timestamp").sort_values("timestamp")
+        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+        out.to_parquet(FEAR_GREED_CACHE_PATH, index=False)
+        return out.reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame(columns=["timestamp", "fear_greed"])
+
 
 def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=False, with_volume=False):
     """Download yfinance for each ticker, stack into one DataFrame with columns: timestamp, symbol, close[, vix][, volume]."""

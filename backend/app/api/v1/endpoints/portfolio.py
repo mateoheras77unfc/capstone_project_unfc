@@ -32,7 +32,7 @@ Error codes
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date as Date
+from datetime import date as Date, timedelta
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -41,6 +41,7 @@ from supabase import Client
 
 from analytics.optimization import portfolio as pf
 from analytics.optimization import risk_metrics as rm
+from analytics.optimization import simulation as sim
 from app.api.dependencies import get_db
 from schemas.forecast import INTERVAL_CONFIG
 from schemas.portfolio import (
@@ -51,6 +52,10 @@ from schemas.portfolio import (
     OptimizeResponse,
     OptimizeRiskMetrics,
     PortfolioPerformance,
+    SimulateRequest,
+    SimulateResponse,
+    SimulationBands,
+    SimulationSummary,
     StatsRequest,
     StatsResponse,
 )
@@ -430,6 +435,152 @@ async def portfolio_optimize(
         performance=PortfolioPerformance(**result["performance"]),
         efficient_frontier=[FrontierPoint(**p) for p in result["efficient_frontier"]],
         risk_metrics=OptimizeRiskMetrics(**result["risk_metrics"]),
+        data_points_used={sym: len(s) for sym, s in series_map.items()},
+        shared_data_points=result["shared_data_points"],
+    )
+
+
+# ── /simulate ─────────────────────────────────────────────────────────────────
+
+# Default horizon in bar-periods per interval
+_DEFAULT_PERIODS: Dict[str, int] = {"1d": 126, "1wk": 26, "1mo": 6}
+
+
+def _simulate_worker(
+    series_map: Dict[str, pd.Series],
+    request: SimulateRequest,
+    n_periods: int,
+    projected_dates: List[str],
+) -> dict:
+    """
+    CPU-bound: run Monte Carlo GBM and Historical Bootstrap simulations.
+
+    Executed inside the thread pool to keep the event loop unblocked.
+    """
+    prices_df = pf.build_price_df(series_map)
+    weights = request.weights
+
+    mc_raw   = sim.monte_carlo_gbm(
+        prices_df, weights, request.n_simulations, n_periods,
+        initial_value=request.initial_value,
+    )
+    hist_raw = sim.historical_bootstrap(
+        prices_df, weights, request.n_simulations, n_periods,
+        initial_value=request.initial_value,
+    )
+
+    mc_summary   = sim.simulation_summary(
+        mc_raw["terminal_values"], mc_raw["p50"],
+        request.initial_value, request.risk_free_rate, request.interval,
+    )
+    hist_summary = sim.simulation_summary(
+        hist_raw["terminal_values"], hist_raw["p50"],
+        request.initial_value, request.risk_free_rate, request.interval,
+    )
+
+    return {
+        "monte_carlo": {**mc_raw,   "dates": projected_dates},
+        "historical":  {**hist_raw, "dates": projected_dates},
+        "mc_summary":   mc_summary,
+        "hist_summary": hist_summary,
+        "shared_data_points": len(prices_df),
+    }
+
+
+@router.post(
+    "/simulate",
+    response_model=SimulateResponse,
+    summary="Monte Carlo and Historical Bootstrap portfolio simulations",
+    responses={
+        200: {"description": "Simulation paths and summary stats returned"},
+        404: {"description": "One or more symbols not found in the database"},
+        422: {"description": "Insufficient data or invalid request body"},
+        503: {"description": "Supabase unreachable"},
+        500: {"description": "Unexpected computation error"},
+    },
+)
+async def portfolio_simulate(
+    request: SimulateRequest,
+    db: Client = Depends(get_db),
+) -> SimulateResponse:
+    """
+    Project the optimised portfolio forward using two simulation methods.
+
+    **Monte Carlo GBM** — models correlated log-normal asset returns using
+    Cholesky-decomposed covariance. Captures normal-distribution risk.
+
+    **Historical Bootstrap** — resamples actual past portfolio returns i.i.d.
+    Preserves fat tails, skewness and real-world distributional features.
+
+    Both methods return percentile fan-chart bands (p5/p25/p50/p75/p95) and
+    raw terminal values for histogram rendering, plus an aggregate summary
+    (Sortino, Calmar, Omega, max drawdown, probability of profit).
+
+    Args:
+        request: Symbols, weights, interval, date range, n_simulations, n_periods.
+        db:      Injected Supabase client.
+
+    Returns:
+        ``SimulateResponse`` with both simulation sets and summary stats.
+    """
+    symbols = [s.strip().upper() for s in request.symbols]
+    loop = asyncio.get_event_loop()
+
+    series_map = await _fetch_all(
+        symbols, request.interval, db,
+        from_date=request.from_date,
+        to_date=request.to_date,
+    )
+
+    n_periods = request.n_periods or _DEFAULT_PERIODS.get(request.interval, 126)
+
+    # Build projected date labels starting from the day after the last price date
+    last_dates = [s.index[-1] for s in series_map.values()]
+    latest = max(last_dates)
+    if request.interval == "1d":
+        step = timedelta(days=1)
+    elif request.interval == "1wk":
+        step = timedelta(weeks=1)
+    else:
+        step = timedelta(days=30)
+
+    projected_dates: List[str] = [latest.strftime("%Y-%m-%d")]
+    current = latest
+    for _ in range(n_periods):
+        current = current + step
+        projected_dates.append(current.strftime("%Y-%m-%d"))
+
+    try:
+        result = await loop.run_in_executor(
+            _executor,
+            _simulate_worker,
+            series_map,
+            request,
+            n_periods,
+            projected_dates,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Portfolio simulation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Portfolio simulation failed unexpectedly.",
+        ) from exc
+
+    return SimulateResponse(
+        symbols=symbols,
+        interval=request.interval,
+        from_date=request.from_date.isoformat() if request.from_date else None,
+        to_date=request.to_date.isoformat() if request.to_date else None,
+        weights=request.weights,
+        n_simulations=request.n_simulations,
+        n_periods=n_periods,
+        initial_value=request.initial_value,
+        monte_carlo=SimulationBands(**result["monte_carlo"]),
+        historical=SimulationBands(**result["historical"]),
+        mc_summary=SimulationSummary(**result["mc_summary"]),
+        hist_summary=SimulationSummary(**result["hist_summary"]),
         data_points_used={sym: len(s) for sym, s in series_map.items()},
         shared_data_points=result["shared_data_points"],
     )

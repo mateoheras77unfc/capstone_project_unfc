@@ -140,6 +140,7 @@ def price_rows_factory() -> Callable[..., List[dict]]:
         freq: str = "W-MON",
         start: str = "2021-01-04",
         seed: int = 42,
+        drift: float = 0.5,
     ) -> List[dict]:
         """
         Build synthetic price rows as returned by Supabase.
@@ -149,17 +150,25 @@ def price_rows_factory() -> Callable[..., List[dict]]:
             freq:  Pandas frequency string.
             start: Start date for the date range.
             seed:  RNG seed for reproducibility.
+            drift: Per-period mean return added to each step.
+                   Defaults to 0.5 so the series trends upward
+                   enough that expected returns exceed the default
+                   5 % annual risk-free rate (needed for max_sharpe).
 
         Returns:
             List of dicts with ``timestamp`` and ``close_price`` keys.
         """
         dates = pd.date_range(start=start, periods=n, freq=freq, tz="UTC")
         rng = np.random.default_rng(seed)
-        prices = 100.0 + np.cumsum(rng.normal(0, 1, n))
-        return [
+        prices = 100.0 + np.cumsum(rng.normal(drift, 1, n))
+        rows = [
             {"timestamp": d.isoformat(), "close_price": round(float(p), 4)}
             for d, p in zip(dates, prices)
         ]
+        # Return newest-first (DESC) — mirrors Supabase ``order("timestamp", desc=True)``.
+        # The endpoint calls ``list(reversed(price_res.data))`` to restore
+        # chronological order, so the mock must provide the same DESC ordering.
+        return list(reversed(rows))
 
     return _make
 
@@ -300,6 +309,10 @@ def configure_portfolio_mock(
     price_eq.lt.return_value = price_eq
 
     price_eq.order.return_value.execute.side_effect = price_side_effect
+
+    # Also support .order().limit(...).execute() — the endpoint caps at 2000 rows.
+    order_mock = price_eq.order.return_value
+    order_mock.limit.return_value = order_mock
 
 
 # ── Synchronous test client (for non-async tests) ─────────────────────────────

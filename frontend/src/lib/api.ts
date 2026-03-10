@@ -12,6 +12,8 @@ import {
   StatsResponse,
   OptimizeRequest,
   OptimizeResponse,
+  SimulateRequest,
+  SimulateResponse,
 } from "@/types/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -83,4 +85,5 @@ export const api = {
   // Portfolio
   portfolioStats: (data: StatsRequest) => fetchApi<StatsResponse>("/portfolio/stats", { method: "POST", body: JSON.stringify(data) }),
   portfolioOptimize: (data: OptimizeRequest) => fetchApi<OptimizeResponse>("/portfolio/optimize", { method: "POST", body: JSON.stringify(data) }),
+  portfolioSimulate: (data: SimulateRequest) => fetchApi<SimulateResponse>("/portfolio/simulate", { method: "POST", body: JSON.stringify(data) }),
 };

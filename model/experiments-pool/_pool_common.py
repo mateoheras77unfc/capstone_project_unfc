@@ -45,15 +45,32 @@ MIN_TRAIN_STACK = 100    # XGB+LSTM stack (need MACD 26 + seq_len + horizon)
 # Cache file for CNN Fear & Greed so we don't hit the API every run
 FEAR_GREED_CACHE_PATH = ARTIFACTS_DIR / "fear_greed_cnn.parquet"
 
+# Fixed 5-year daily data: same date range every run so results are reproducible
+FIXED_END_DATE = "2026-02-28"
+FIXED_START_DATE = "2021-02-28"  # 5 years before FIXED_END_DATE
+POOL_DATA_FIXED_PATH = ARTIFACTS_DIR / "pool_data_5y_fixed.parquet"
+VIX_DATA_FIXED_PATH = ARTIFACTS_DIR / "vix_5y_fixed.parquet"
+FEAR_GREED_FIXED_PATH = ARTIFACTS_DIR / "fear_greed_5y_fixed.parquet"
 
-def fetch_cnn_fear_greed_index(limit_days=500, start_date=None, force_refresh=False):
+
+def fetch_cnn_fear_greed_index(limit_days=500, start_date=None, force_refresh=False, use_fixed=True):
     """
-    Load CNN Fear & Greed from cache file if present; otherwise fetch from API and save.
-    Returns DataFrame with columns: timestamp, fear_greed.
-    - limit_days: used when start_date is None to compute start from today.
-    - start_date: optional str or datetime; request data from this date (used for API or to filter cache).
-    - force_refresh: if True, fetch from API and overwrite cache.
+    Load CNN Fear & Greed from cache. Returns DataFrame with columns: timestamp, fear_greed.
+    - use_fixed: if True and FEAR_GREED_FIXED_PATH exists, load from that (same 5y window as pool).
+    - limit_days: used when start_date is None to compute start from today (live cache only).
+    - start_date: optional str or datetime; filter loaded data from this date.
+    - force_refresh: if True, fetch from API and overwrite cache (ignored when use_fixed and fixed file exists).
     """
+    if use_fixed and FEAR_GREED_FIXED_PATH.exists():
+        try:
+            df = pd.read_parquet(FEAR_GREED_FIXED_PATH)
+            df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.normalize()
+            if start_date is not None:
+                start = pd.to_datetime(start_date).normalize()
+                df = df[df["timestamp"] >= start].copy()
+            return df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+        except Exception:
+            pass
     if not force_refresh and FEAR_GREED_CACHE_PATH.exists():
         try:
             df = pd.read_parquet(FEAR_GREED_CACHE_PATH)
@@ -69,11 +86,11 @@ def fetch_cnn_fear_greed_index(limit_days=500, start_date=None, force_refresh=Fa
     except ImportError:
         return pd.DataFrame(columns=["timestamp", "fear_greed"])
     if start_date is not None:
-        start_date = pd.to_datetime(start_date).strftime("%Y-%m-%d")
+        start_date_str = pd.to_datetime(start_date).strftime("%Y-%m-%d")
     else:
         from datetime import datetime, timezone, timedelta
-        start_date = (datetime.now(timezone.utc) - timedelta(days=limit_days)).strftime("%Y-%m-%d")
-    url = f"https://production.dataviz.cnn.io/index/fearandgreed/graphdata/{start_date}"
+        start_date_str = (datetime.now(timezone.utc) - timedelta(days=limit_days)).strftime("%Y-%m-%d")
+    url = f"https://production.dataviz.cnn.io/index/fearandgreed/graphdata/{start_date_str}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Accept": "application/json",
@@ -99,9 +116,126 @@ def fetch_cnn_fear_greed_index(limit_days=500, start_date=None, force_refresh=Fa
         return pd.DataFrame(columns=["timestamp", "fear_greed"])
 
 
-def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=False, with_volume=False):
-    """Download yfinance for each ticker, stack into one DataFrame with columns: timestamp, symbol, close[, vix][, volume]."""
+def _fetch_cnn_fear_greed_from_api(start_date_str):
+    """Fetch CNN Fear & Greed from API from start_date_str. Returns DataFrame or None on failure."""
+    try:
+        import requests
+    except ImportError:
+        return None
+    url = f"https://production.dataviz.cnn.io/index/fearandgreed/graphdata/{start_date_str}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Referer": "https://www.cnn.com/markets/fear-and-greed",
+        "Origin": "https://www.cnn.com",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        fng_data = data.get("fear_and_greed_historical", {}).get("data") or []
+        if not fng_data:
+            return None
+        fng_df = pd.DataFrame(fng_data)
+        fng_df["timestamp"] = pd.to_datetime(fng_df["x"] / 1000, unit="s").dt.normalize()
+        fng_df = fng_df.rename(columns={"y": "fear_greed"})
+        return fng_df[["timestamp", "fear_greed"]].drop_duplicates("timestamp").sort_values("timestamp")
+    except Exception:
+        return None
+
+
+def download_and_save_fixed_pool_data(tickers=None):
+    """
+    Download 5-year daily data for the asset pool, VIX, and Fear & Greed for the fixed date range
+    (FIXED_START_DATE to FIXED_END_DATE) and save to artifacts. Run once to create
+    pool_data_5y_fixed.parquet, vix_5y_fixed.parquet, and fear_greed_5y_fixed.parquet
+    so that load_pool_data(use_fixed=True) and fetch_cnn_fear_greed_index(use_fixed=True) return the same data every run.
+    """
     tickers = tickers or TICKERS
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for sym in tickers:
+        try:
+            df = yf.download(
+                sym,
+                start=FIXED_START_DATE,
+                end=FIXED_END_DATE,
+                interval=INTERVAL,
+                progress=False,
+                auto_adjust=False,
+                multi_level_index=False,
+            )
+            if df.empty or len(df) < MIN_CONTEXT_CHRONOS:
+                continue
+            df = df.reset_index()
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+            df = df.rename(columns={"Date": "timestamp", "Close": "close"})
+            if "Volume" in df.columns:
+                df = df.rename(columns={"Volume": "volume"})
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df["symbol"] = sym
+            cols = ["timestamp", "symbol", "close"]
+            if "volume" in df.columns:
+                cols.append("volume")
+            df = df[cols].dropna()
+            rows.append(df)
+        except Exception as e:
+            print(f"Skip {sym}: {e}")
+    if not rows:
+        raise ValueError("No data loaded for any ticker.")
+    out = pd.concat(rows, ignore_index=True)
+    out = out.sort_values(["symbol", "timestamp"]).reset_index(drop=True)
+    out.to_parquet(POOL_DATA_FIXED_PATH, index=False)
+    # VIX for the same fixed range
+    vix_df = yf.download(
+        "^VIX",
+        start=FIXED_START_DATE,
+        end=FIXED_END_DATE,
+        interval=INTERVAL,
+        progress=False,
+        auto_adjust=False,
+        multi_level_index=False,
+    )
+    if not vix_df.empty:
+        vix_df = vix_df.reset_index()
+        if isinstance(vix_df.columns, pd.MultiIndex):
+            vix_df.columns = [c[0] if isinstance(c, tuple) else c for c in vix_df.columns]
+        vix_df = vix_df.rename(columns={"Date": "timestamp", "Close": "vix"})
+        vix_df["timestamp"] = pd.to_datetime(vix_df["timestamp"])
+        vix_df[["timestamp", "vix"]].dropna().to_parquet(VIX_DATA_FIXED_PATH, index=False)
+    # Fear & Greed for the same fixed range
+    fng_df = _fetch_cnn_fear_greed_from_api(FIXED_START_DATE)
+    if fng_df is not None and not fng_df.empty:
+        end_ts = pd.to_datetime(FIXED_END_DATE).normalize()
+        fng_df = fng_df[fng_df["timestamp"] <= end_ts].copy()
+        fng_df.to_parquet(FEAR_GREED_FIXED_PATH, index=False)
+    return out
+
+
+def load_pool_data(tickers=None, period=PERIOD, interval=INTERVAL, with_vix=False, with_volume=False, use_fixed=True):
+    """
+    Load pool data: if use_fixed=True and fixed cache exists, load from
+    pool_data_5y_fixed.parquet (and vix_5y_fixed.parquet if with_vix).
+    Otherwise download via yfinance. Columns: timestamp, symbol, close[, vix][, volume].
+    """
+    tickers = tickers or TICKERS
+    if use_fixed:
+        if not POOL_DATA_FIXED_PATH.exists():
+            download_and_save_fixed_pool_data(tickers=tickers)
+        out = pd.read_parquet(POOL_DATA_FIXED_PATH)
+        out["timestamp"] = pd.to_datetime(out["timestamp"])
+        if not with_volume and "volume" in out.columns:
+            out = out.drop(columns=["volume"])
+        if with_vix and VIX_DATA_FIXED_PATH.exists():
+            vix_df = pd.read_parquet(VIX_DATA_FIXED_PATH)
+            vix_df["timestamp"] = pd.to_datetime(vix_df["timestamp"])
+            out = out.merge(vix_df, on="timestamp", how="left")
+            out["vix"] = out["vix"].ffill().bfill()
+        return out.sort_values(["symbol", "timestamp"]).reset_index(drop=True)
+
+    # Live download (original behavior)
     rows = []
     for sym in tickers:
         try:

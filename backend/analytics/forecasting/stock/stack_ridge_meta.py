@@ -66,9 +66,10 @@ def build_feature_df(grp: pd.DataFrame) -> tuple:
         df["vix_velocity"] = vix.diff(1)
         df["vix_momentum"] = vix - df["vix_sma_5"]
     else:
-        df["vix_sma_5"] = np.nan
-        df["vix_velocity"] = np.nan
-        df["vix_momentum"] = np.nan
+        # Backend often has no VIX; use 0 so dropna() does not remove all rows
+        df["vix_sma_5"] = 0.0
+        df["vix_velocity"] = 0.0
+        df["vix_momentum"] = 0.0
     df["month"] = pd.to_datetime(df["timestamp"]).dt.month
     df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
     df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)

@@ -30,6 +30,8 @@ hyperframe==6.1.0
 idna==3.11
 Jinja2==3.1.6
 joblib==1.5.3
+# Stack ridge meta forecaster (backend/analytics/forecasting/stock)
+lightgbm>=4.0.0
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
@@ -77,6 +79,8 @@ strictyaml==1.7.3
 supabase==2.28.0
 supabase-auth==2.28.0
 supabase-functions==2.28.0
+# LSTM in stack artifact (load_model); optional if not using LSTM base
+tensorflow>=2.15.0
 tenacity==9.1.4
 threadpoolctl==3.6.0
 typing-inspection==0.4.2

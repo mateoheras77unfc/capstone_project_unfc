@@ -2,7 +2,7 @@
 Shared config, data loading, backtest, and metrics for experiments-pool.
 - Daily data (INTERVAL="1d"). Single asset pool: each asset is backtested on its own history
   (expanding window, last 60 days held out for evaluation).
-- All models use TEST_SIZE=60 days, 21-step direct forecast, rolling backtest (step 7 days);
+- All models use TEST_SIZE=60 days, 7-step direct forecast, rolling backtest (step 7 days);
   metrics averaged over mini-windows.
 """
 from pathlib import Path
@@ -33,11 +33,11 @@ TICKERS = [
 INTERVAL = "1d"
 PERIOD = "5y"
 
-# 21-day-ahead rolling backtest: 60-day test window, predict 21 days, move by 7 days
+# 7-day-ahead rolling backtest: 60-day test window, predict 7 days, move by 7 days
 TEST_SIZE = 60
-FORECAST_HORIZON = 21
+FORECAST_HORIZON = 7
 ROLLING_STEP = 7
-MIN_TRAIN_BASELINE = 20   # EWM span
+MIN_TRAIN_BASELINE = 7    # min history for baseline EWM (span=7)
 MIN_TRAIN_PROPHET = 10
 MIN_CONTEXT_CHRONOS = 64
 MIN_TRAIN_STACK = 100    # XGB+LSTM stack (need MACD 26 + seq_len + horizon)
@@ -335,7 +335,7 @@ def backtest_21d_rolling(
     get_forecast_fn,
 ):
     """
-    Rolling 21-day-ahead backtest within a fixed test window.
+    Rolling multi-day-ahead backtest within a fixed test window.
     Start at beginning of test window, predict next `horizon` steps; move forward by `step`;
     repeat until start + horizon would exceed test window. Returns DataFrame with
     timestamp, y_true, y_pred, window_ix (for averaging metrics per mini-window).
@@ -387,7 +387,7 @@ def compute_metrics(pred_df):
 
 def compute_metrics_averaged_over_windows(pred_df):
     """
-    For rolling 21d backtest: pred_df has window_ix. Compute MAE, RMSE, MAPE per window,
+    For rolling backtest: pred_df has window_ix. Compute MAE, RMSE, MAPE per window,
     then average across windows. If no window_ix, falls back to single-window (compute_metrics).
     """
     if pred_df.empty:

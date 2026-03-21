@@ -21,10 +21,6 @@ frontend/dist/
 .vscode/
 .idea/
 
-# Stock-model experiments and artifacts (do not push); model/ until rename completes locally
-stock-model/
-model/
-
 # PyTorch Lightning training logs (TensorBoard events)
 lightning_logs/
 backend/lightning_logs/

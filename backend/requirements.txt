@@ -50,10 +50,11 @@ highspy==1.13.1
 
 # ── Forecasting models ─────────────────────────────────────────────────────────
 chronos-forecasting>=2.0
-neuralforecast>=1.7.0
 lightgbm>=4.0.0
 torch>=2.0.0
-lightning>=2.0.0
+# neuralforecast and lightning are only needed locally for crypto assembly training.
+# They require `ray` which is unavailable on some deployment platforms.
+# Install locally with: pip install neuralforecast lightning
 
 # ── Caching ───────────────────────────────────────────────────────────────────
 fastapi-cache2==0.2.2

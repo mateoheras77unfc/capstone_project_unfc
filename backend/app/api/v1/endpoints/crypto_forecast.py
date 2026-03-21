@@ -323,8 +323,26 @@ def _generate_nova_insight(symbol: str, forecast: Dict[str, Any], sentiment: str
 
 def _run_forecast(symbol: str, periods: int, db: Client, force_reload: bool, nova_sentiment: Optional[str] = None) -> Dict[str, Any]:
     """Load model and run sentiment-aware forecast using the provided market sentiment."""
+    import os
+    import torch
     model = _load_model(symbol, db, force_reload)
     _inject_train_df_if_missing(model, symbol, db)
+
+    # ── Force CPU on NHiTS trainer (Render has no MPS or CUDA) ───────────────
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    nhits = getattr(model, "_nhits", None)
+    if nhits is not None:
+        nf = getattr(nhits, "nf", None)
+        if nf is not None:
+            try:
+                if hasattr(nf, "trainer_kwargs"):
+                    nf.trainer_kwargs["accelerator"] = "cpu"
+                    nf.trainer_kwargs["devices"] = 1
+                if hasattr(nf, "model") and nf.model is not None:
+                    nf.model = nf.model.cpu()
+            except Exception as e:
+                logger.warning("Could not force CPU on NHiTS trainer: %s", e)
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Check if this model supports fear_greed sentiment injection
     fear_greed_active = False

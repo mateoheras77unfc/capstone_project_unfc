@@ -272,7 +272,8 @@ async def speak_text(request: SpeakRequest):
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         )
         response = polly.synthesize_speech(
-            Text=text,
+            TextType="ssml",
+            Text=f'<speak><prosody rate="108%">{text}</prosody></speak>',
             OutputFormat="mp3",
             VoiceId="Matthew",
             Engine="neural",

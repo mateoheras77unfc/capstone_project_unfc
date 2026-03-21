@@ -96,7 +96,15 @@ export function SparkChat({ context }: SparkChatProps = {}) {
   }, [open, isVoiceMode]);
 
   // ── TTS: speak reply via Amazon Polly (Matthew, neural), then restart recording
+  // Single persistent <audio> element — created once so iOS keeps it "unlocked"
+  // after the user gesture in toggleVoiceMode.
+  const audioElemRef = useRef<HTMLAudioElement | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    audioElemRef.current = new Audio();
+    return () => { audioElemRef.current?.pause(); };
+  }, []);
 
   const speakAndListen = useCallback((text: string) => {
     // Stop any playing audio
@@ -117,7 +125,9 @@ export function SparkChat({ context }: SparkChatProps = {}) {
       })
       .then((blob) => {
         const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
+        // Reuse the persistent element so iOS keeps the unlock from the tap
+        const audio = audioElemRef.current ?? new Audio();
+        audio.src = url;
         currentAudioRef.current = audio;
         audio.onended = () => {
           URL.revokeObjectURL(url);
@@ -131,7 +141,16 @@ export function SparkChat({ context }: SparkChatProps = {}) {
           setVoiceStep("idle");
           if (voiceModeRef.current) startVoiceRecordingRef.current();
         };
-        audio.play();
+        audio.play().catch(() => {
+          // Fallback to browser TTS if play() still blocked
+          const utter = new SpeechSynthesisUtterance(stripMd(text));
+          utter.rate = 1.05;
+          utter.onend = () => {
+            if (voiceModeRef.current) startVoiceRecordingRef.current();
+            else setVoiceStep("idle");
+          };
+          window.speechSynthesis.speak(utter);
+        });
       })
       .catch(() => {
         // Fallback to browser TTS if Polly fails
@@ -332,7 +351,14 @@ export function SparkChat({ context }: SparkChatProps = {}) {
       if (mediaRecorderRef.current?.state === "recording")
         mediaRecorderRef.current.stop();
     } else {
-      // Activate → immediately start recording
+      // Activate → unlock audio on this user gesture (required for iOS autoplay)
+      const au = audioElemRef.current;
+      if (au) {
+        // Play a silent data URI so the element is "unlocked" for future play() calls
+        au.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+        au.volume = 0;
+        au.play().catch(() => {}).finally(() => { au.pause(); au.src = ""; au.volume = 1; });
+      }
       voiceModeRef.current = true;
       setIsVoiceMode(true);
       window.speechSynthesis.cancel();

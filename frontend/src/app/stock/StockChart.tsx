@@ -48,7 +48,7 @@ export function StockChart({
   isCrypto = false,
 }: StockChartProps) {
   const [model, setModel] = useState<"chronos" | "assembly">("chronos");
-  let interval: "1d" | "1wk" | "1mo" = "1d";
+  const interval = "1d";
   const [viewDays, setViewDays] = useState<30 | 90 | 180 | 365 | 0>(30);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -86,29 +86,7 @@ export function StockChart({
     }));
   }
 
-  // Returns a stable Monday-anchored ISO week string "YYYY-Www".
-  function isoWeekKey(d: Date): string {
-    // Copy date and shift to the nearest Monday (start of ISO week).
-    const day = new Date(d);
-    const dow = day.getUTCDay(); // 0=Sun … 6=Sat
-    const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday
-    day.setUTCDate(day.getUTCDate() + diff);
-    const yyyy = day.getUTCFullYear();
-    const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(day.getUTCDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`; // one key per calendar week
-  }
 
-  // Aggregate daily data into weekly or monthly means.
-  if (interval === "1wk") {
-    baseData = aggregateByKey(baseData, isoWeekKey);
-  } else if (interval === "1mo") {
-    baseData = aggregateByKey(
-      baseData,
-      (d) =>
-        `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
-    );
-  }
 
   const chartData: Array<{
     date: string;

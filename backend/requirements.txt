@@ -51,6 +51,8 @@ highspy==1.13.1
 # ── Forecasting models ─────────────────────────────────────────────────────────
 chronos-forecasting>=2.0
 lightgbm>=4.0.0
+xgboost>=2.0.0
+tensorflow-cpu>=2.15.0
 torch>=2.0.0
 # neuralforecast and lightning are only needed locally for crypto assembly training.
 # They require `ray` which is unavailable on some deployment platforms.

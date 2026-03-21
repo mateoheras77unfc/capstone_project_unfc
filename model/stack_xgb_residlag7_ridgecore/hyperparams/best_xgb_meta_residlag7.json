@@ -1,0 +1,89 @@
+{
+  "schema": "per_horizon_v1",
+  "per_horizon": [
+    {
+      "colsample_bytree": 0.8,
+      "gamma": 0.0,
+      "learning_rate": 0.01,
+      "max_depth": 5,
+      "min_child_weight": 10,
+      "n_estimators": 360,
+      "reg_alpha": 0.0,
+      "reg_lambda": 100.0,
+      "subsample": 0.6,
+      "cv_mse": 0.0005043949058745056
+    },
+    {
+      "colsample_bytree": 0.6,
+      "gamma": 0.0,
+      "learning_rate": 0.02,
+      "max_depth": 4,
+      "min_child_weight": 5,
+      "n_estimators": 360,
+      "reg_alpha": 0.5,
+      "reg_lambda": 100.0,
+      "subsample": 0.6,
+      "cv_mse": 0.0005008328007534146
+    },
+    {
+      "colsample_bytree": 1.0,
+      "gamma": 0.0,
+      "learning_rate": 0.01,
+      "max_depth": 2,
+      "min_child_weight": 10,
+      "n_estimators": 160,
+      "reg_alpha": 0.0,
+      "reg_lambda": 20.0,
+      "subsample": 0.6,
+      "cv_mse": 0.0005041361146140844
+    },
+    {
+      "colsample_bytree": 0.8,
+      "gamma": 0.0,
+      "learning_rate": 0.005,
+      "max_depth": 4,
+      "min_child_weight": 5,
+      "n_estimators": 520,
+      "reg_alpha": 0.0,
+      "reg_lambda": 20.0,
+      "subsample": 0.6,
+      "cv_mse": 0.0005038306990172714
+    },
+    {
+      "colsample_bytree": 1.0,
+      "gamma": 0.0,
+      "learning_rate": 0.01,
+      "max_depth": 2,
+      "min_child_weight": 5,
+      "n_estimators": 240,
+      "reg_alpha": 0.5,
+      "reg_lambda": 50.0,
+      "subsample": 1.0,
+      "cv_mse": 0.0005039850948378444
+    },
+    {
+      "colsample_bytree": 0.6,
+      "gamma": 0.0,
+      "learning_rate": 0.01,
+      "max_depth": 2,
+      "min_child_weight": 5,
+      "n_estimators": 240,
+      "reg_alpha": 0.0,
+      "reg_lambda": 20.0,
+      "subsample": 0.8,
+      "cv_mse": 0.0005101330752950162
+    },
+    {
+      "colsample_bytree": 1.0,
+      "gamma": 0.0,
+      "learning_rate": 0.005,
+      "max_depth": 5,
+      "min_child_weight": 1,
+      "n_estimators": 160,
+      "reg_alpha": 0.0,
+      "reg_lambda": 100.0,
+      "subsample": 1.0,
+      "cv_mse": 0.0005084759905003011
+    }
+  ]
+}

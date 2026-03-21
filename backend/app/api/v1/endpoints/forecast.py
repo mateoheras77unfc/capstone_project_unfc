@@ -1,30 +1,40 @@
 """
 app/api/v1/endpoints/forecast.py
 ──────────────────────────────────
-Forecast endpoints.
+Walk-forward backtest metrics and forecast bounds using Chronos-2.
 
-POST /api/v1/forecast/stack-ridge-meta   Pre-trained stack (LGB + LSTM + Ridge + EWM, Ridge meta).
-POST /api/v1/forecast/metrics             Walk-forward metrics (stub).
+Route
+-----
+POST /api/v1/forecast/metrics
+
+Flow
+----
+1. Fetch historical close prices for ``symbol`` from Supabase.
+2. Walk-forward backtest over the last ``last_n_weeks`` windows:
+   - For each step i, train on prices[:end-last_n+i], predict 1 step ahead.
+   - Compare prediction vs actual → collect errors.
+3. Compute aggregate MAE, RMSE, MAPE from walk-forward errors.
+4. Run Chronos once on full history for ``bounds_horizon_periods`` ahead.
+5. Return ForecastMetricsResponse with metrics and bounds rows.
 """
 
 import asyncio
 import logging
+import math
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
-from analytics.forecasting.stock import StackRidgeMetaForecaster
+from analytics.forecasting import chronos2
 from app.api.dependencies import get_db
 from schemas.forecast import (
-    INTERVAL_CONFIG,
-    ForecastRequest,
-    ForecastResponse,
     ForecastMetricsRequest,
     ForecastMetricsResponse,
+    ModelBoundsRow,
+    ModelMetricRow,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,44 +43,11 @@ router = APIRouter()
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="forecast")
 
 
-def _horizon_label(periods: int, interval: str) -> str:
-    """Build human-readable forecast horizon (e.g. '21 days (~1 month ahead)')."""
-    cfg = INTERVAL_CONFIG.get(interval, INTERVAL_CONFIG["1d"])
-    unit = cfg["label_singular"] if periods == 1 else cfg["label_plural"]
-    if interval == "1d":
-        cal_days = periods * (365 / 252)
-        if cal_days >= 365:
-            years = cal_days / 365
-            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
-        elif cal_days >= 28:
-            months = round(cal_days / 30.44)
-            approx = f"~{months} month{'s' if months != 1 else ''} ahead"
-        elif cal_days >= 7:
-            weeks = round(cal_days / 7)
-            approx = f"~{weeks} week{'s' if weeks != 1 else ''} ahead"
-        else:
-            approx = "~days ahead"
-    elif interval == "1wk":
-        months = periods / 4.33
-        m = round(months)
-        if m >= 12:
-            years = m / 12
-            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
-        elif m >= 1:
-            approx = f"~{m} month{'s' if m != 1 else ''} ahead"
-        else:
-            approx = "~days ahead"
-    else:
-        if periods >= 12:
-            years = periods / 12
-            approx = f"~{years:.1f} year{'s' if years >= 2 else ''} ahead"
-        else:
-            approx = f"~{periods} month{'s' if periods != 1 else ''} ahead"
-    return f"{periods} {unit} ({approx})"
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 
-async def _fetch_context_df_ohlcv(symbol: str, db: Client) -> pd.DataFrame:
-    """Load OHLCV for symbol from Supabase. Returns DataFrame with timestamp, close, volume."""
+async def _fetch_prices(symbol: str, db: Client) -> pd.Series:
+    """Load historical close prices for symbol from Supabase (oldest → newest)."""
     try:
         asset_res = (
             db.table("assets")
@@ -83,17 +60,14 @@ async def _fetch_context_df_ohlcv(symbol: str, db: Client) -> pd.DataFrame:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}") from exc
 
     if not asset_res.data:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Symbol '{symbol}' not found. Use POST /api/v1/assets/sync/{symbol} to cache it first.",
-        )
+        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found.")
 
     asset_id = asset_res.data[0]["id"]
 
     try:
         price_res = (
             db.table("historical_prices")
-            .select("timestamp, open_price, high_price, low_price, close_price, volume")
+            .select("timestamp, close_price")
             .eq("asset_id", asset_id)
             .order("timestamp", desc=True)
             .limit(2000)
@@ -103,99 +77,142 @@ async def _fetch_context_df_ohlcv(symbol: str, db: Client) -> pd.DataFrame:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}") from exc
 
     if not price_res.data:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No price data found for '{symbol}'. Use POST /api/v1/assets/sync/{symbol} to populate it.",
-        )
+        raise HTTPException(status_code=404, detail=f"No price data for '{symbol}'.")
 
     rows = list(reversed(price_res.data))
-    df = pd.DataFrame(rows)
-    df = df.rename(columns={"close_price": "close"})
-    if "volume" not in df.columns:
-        df["volume"] = np.nan
-    logger.info("Loaded %d OHLCV rows for %s", len(df), symbol)
-    return df
+    index = pd.to_datetime([r["timestamp"] for r in rows], utc=True)
+    values = [float(r["close_price"]) for r in rows]
+    return pd.Series(values, index=index, name="close")
 
 
-def _build_response(result: Dict[str, Any], req: ForecastRequest, n_points: int) -> ForecastResponse:
-    """Build ForecastResponse from model result and request."""
-    return ForecastResponse(
-        symbol=req.symbol,
-        interval=req.interval,
-        periods_ahead=req.periods,
-        forecast_horizon_label=_horizon_label(req.periods, req.interval),
-        data_points_used=n_points,
-        **result,
+def _compute_walk_forward(
+    prices: pd.Series,
+    last_n: int,
+    confidence_level: float,
+    interval: str,
+) -> ModelMetricRow:
+    """
+    Run a 1-step-ahead walk-forward backtest over the last ``last_n`` windows.
+
+    For each step i in [0, last_n):
+      - Train on prices[: -(last_n - i)]
+      - Predict 1 step ahead
+      - Compare vs actual prices[-(last_n - i)]
+
+    Returns ModelMetricRow with MAE, RMSE, MAPE.
+    """
+    errors = []
+    actuals = []
+    predictions = []
+
+    n = len(prices)
+    for i in range(last_n):
+        train_end = n - last_n + i
+        if train_end < 30:
+            continue
+        train = prices.iloc[:train_end]
+        actual = float(prices.iloc[train_end])
+
+        try:
+            result = chronos2.forecast(train, 1, confidence_level, interval)
+            predicted = result["point_forecast"][0]
+        except Exception as exc:
+            logger.warning("Walk-forward step %d failed: %s", i, exc)
+            continue
+
+        errors.append(abs(actual - predicted))
+        actuals.append(actual)
+        predictions.append(predicted)
+
+    if not errors:
+        return ModelMetricRow(model="chronos", mae=0.0, rmse=0.0, mape=0.0)
+
+    mae = float(np.mean(errors))
+    rmse = float(math.sqrt(np.mean([(a - p) ** 2 for a, p in zip(actuals, predictions)])))
+    mape = float(
+        np.mean([abs(a - p) / abs(a) * 100 for a, p in zip(actuals, predictions) if a != 0])
+    )
+
+    return ModelMetricRow(model="chronos", mae=round(mae, 4), rmse=round(rmse, 4), mape=round(mape, 4))
+
+
+def _compute_bounds(
+    prices: pd.Series,
+    horizon: int,
+    confidence_level: float,
+    interval: str,
+) -> ModelBoundsRow:
+    """Run Chronos on full history and return bounds for the horizon."""
+    result = chronos2.forecast(prices, horizon, confidence_level, interval)
+    return ModelBoundsRow(
+        model="chronos",
+        lower=result["lower_bound"],
+        forecast=result["point_forecast"],
+        upper=result["upper_bound"],
     )
 
 
-def _run_stack_ridge_meta(context_df: pd.DataFrame, req: ForecastRequest) -> Dict[str, Any]:
-    """Run StackRidgeMetaForecaster in thread pool."""
-    model = StackRidgeMetaForecaster()
-    model.fit(context_df)
-    result = model.forecast(periods=req.periods)
-    result["model_info"] = model.get_model_info()
-    return result
-
-
-@router.post(
-    "/stack-ridge-meta",
-    response_model=ForecastResponse,
-    summary="Stack (Ridge meta) forecast",
-)
-async def stack_ridge_meta_forecast(
-    request: ForecastRequest,
-    db: Client = Depends(get_db),
-) -> ForecastResponse:
-    """
-    Pre-trained stack (LGB + LSTM + Ridge + EWM bases, Ridge meta). Uses OHLCV from DB.
-    Artifacts must exist in backend/analytics/forecasting/stock/ (run 98c notebook export cell).
-    """
-    context_df = await _fetch_context_df_ohlcv(request.symbol, db)
-    min_rows = INTERVAL_CONFIG.get(request.interval, {}).get("min_samples", 60)
-    if len(context_df) < min_rows:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"'{request.symbol}' has only {len(context_df)} rows — "
-                f"need at least {min_rows} for stack forecast. Sync more history."
-            ),
-        )
-
-    loop = asyncio.get_event_loop()
-    try:
-        result = await loop.run_in_executor(
-            _executor, _run_stack_ridge_meta, context_df, request
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Stack artifact not found. Run the export cell in model/experiments-pool/98c-stack-ridge-meta-logreturn-pool.ipynb.",
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Stack-ridge-meta forecast failed for %s", request.symbol)
-        raise HTTPException(status_code=500, detail="Forecast computation failed") from exc
-
-    return _build_response(result, request, len(context_df))
+# ── endpoint ──────────────────────────────────────────────────────────────────
 
 
 @router.post(
     "/metrics",
     response_model=ForecastMetricsResponse,
-    summary="Walk-forward metrics (empty — no model configured)",
+    summary="Walk-forward backtest metrics and forecast bounds (Chronos-2)",
 )
 async def forecast_metrics(
     request: ForecastMetricsRequest,
+    db: Client = Depends(get_db),
 ) -> ForecastMetricsResponse:
-    """Return empty metrics and bounds. No forecast model is configured."""
+    """
+    Run a walk-forward backtest and return error metrics + forecast bounds.
+
+    Walk-forward: slides a training window over the last ``last_n_weeks``
+    periods, predicts 1 step ahead each time, and aggregates MAE/RMSE/MAPE.
+
+    Bounds: runs Chronos once on full history for ``bounds_horizon_periods``
+    steps ahead and returns lower, point, upper arrays.
+    """
+    symbol = request.symbol.upper()
+    prices = await _fetch_prices(symbol, db)
+
+    bounds_horizon = request.bounds_horizon_periods or (
+        12 if request.interval == "1wk" else 4
+    )
+
+    loop = asyncio.get_event_loop()
+
+    try:
+        metrics_row, bounds_row = await asyncio.gather(
+            loop.run_in_executor(
+                _executor,
+                lambda: _compute_walk_forward(
+                    prices,
+                    request.last_n_weeks,
+                    request.confidence_level,
+                    request.interval,
+                ),
+            ),
+            loop.run_in_executor(
+                _executor,
+                lambda: _compute_bounds(
+                    prices,
+                    bounds_horizon,
+                    request.confidence_level,
+                    request.interval,
+                ),
+            ),
+        )
+    except Exception as exc:
+        logger.exception("forecast_metrics failed for %s", symbol)
+        raise HTTPException(status_code=503, detail=f"Metrics computation failed: {exc}") from exc
+
     return ForecastMetricsResponse(
-        symbol=request.symbol,
+        symbol=symbol,
         interval=request.interval,
         last_n_weeks=request.last_n_weeks,
-        bounds_horizon_weeks=0,
-        metrics=[],
-        bounds=[],
+        bounds_horizon_weeks=bounds_horizon,
+        metrics=[metrics_row],
+        bounds=[bounds_row],
         error=None,
     )

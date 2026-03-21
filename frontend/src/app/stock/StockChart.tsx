@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   Line,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -28,14 +29,12 @@ import { useToast } from "@/hooks/use-toast";
 interface StockChartProps {
   symbol: string;
   initialPrices: PriceOut[];
-  /** Forecast horizon in days (7, 14, or 21). */
   forecastDays?: 7 | 14 | 21;
   setForecastDays?: (days: 7 | 14 | 21) => void;
-  compareAll?: boolean;
-  setCompareAll?: (value: boolean) => void;
-  /** Called after a successful forecast with the model used; parent can load metrics for that model. */
-  onForecastComplete?: (model: "chronos") => void;
+  onForecastComplete?: (model: "chronos" | "assembly") => void;
+  onForecastData?: (data: ForecastResponse, model: "chronos" | "assembly") => void;
   metricsLoading?: boolean;
+  isCrypto?: boolean;
 }
 
 export function StockChart({
@@ -43,19 +42,22 @@ export function StockChart({
   initialPrices,
   forecastDays = 7,
   setForecastDays,
-  compareAll = false,
-  setCompareAll,
   onForecastComplete,
+  onForecastData,
   metricsLoading = false,
+  isCrypto = false,
 }: StockChartProps) {
-  const [model, setModel] = useState<"chronos">("chronos");
-  const [interval, setInterval] = useState<"1d" | "1wk" | "1mo">("1d");
+  const [model, setModel] = useState<"chronos" | "assembly">("chronos");
+  const interval = "1d";
+  const [viewDays, setViewDays] = useState<30 | 90 | 180 | 365 | 0>(30);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   // Reverse prices to be chronological for the chart
   let baseData = [...initialPrices].reverse();
+  // Slice to view window (0 = all)
+  if (viewDays > 0) baseData = baseData.slice(-viewDays);
 
   // Helper: group daily data by a key and return mean close per group.
   // Returned array is sorted chronologically by first-seen key.
@@ -64,7 +66,10 @@ export function StockChart({
     keyFn: (d: Date) => string
   ): PriceOut[] {
     const order: string[] = [];
-    const groups: Record<string, { sum: number; count: number; first: PriceOut }> = {};
+    const groups: Record<
+      string,
+      { sum: number; count: number; first: PriceOut }
+    > = {};
     data.forEach((p) => {
       const key = keyFn(new Date(p.timestamp));
       if (!groups[key]) {
@@ -81,29 +86,7 @@ export function StockChart({
     }));
   }
 
-  // Returns a stable Monday-anchored ISO week string "YYYY-Www".
-  function isoWeekKey(d: Date): string {
-    // Copy date and shift to the nearest Monday (start of ISO week).
-    const day = new Date(d);
-    const dow = day.getUTCDay(); // 0=Sun … 6=Sat
-    const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday
-    day.setUTCDate(day.getUTCDate() + diff);
-    const yyyy = day.getUTCFullYear();
-    const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(day.getUTCDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`; // one key per calendar week
-  }
 
-  // Aggregate daily data into weekly or monthly means.
-  if (interval === "1wk") {
-    baseData = aggregateByKey(baseData, isoWeekKey);
-  } else if (interval === "1mo") {
-    baseData = aggregateByKey(
-      baseData,
-      (d) =>
-        `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
-    );
-  }
 
   const chartData: Array<{
     date: string;
@@ -136,51 +119,77 @@ export function StockChart({
   }
 
   // ── X-axis label format varies by interval ────────────────────────────
-  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
-                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+  const MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
 
   function formatXAxis(iso: string): string {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
     const mon = MONTHS[d.getUTCMonth()];
     const day = d.getUTCDate();
-    const yr  = String(d.getUTCFullYear()).slice(2); // "26"
-    if (interval === "1mo") return `${mon} '${yr}`;  // "Feb '26"
-    if (interval === "1wk") return `${mon} ${day}`;  // "Feb 23"
-    return `${mon} ${day}`;                           // "Feb 23" (daily)
+    const yr = String(d.getUTCFullYear()).slice(2); // "26"
+    return `${mon} ${day}`; // "Feb 23" (daily)
   }
 
   function formatTooltipLabel(iso: string): string {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const mon  = MONTHS[d.getUTCMonth()];
-    const day  = d.getUTCDate();
+    const mon = MONTHS[d.getUTCMonth()];
+    const day = d.getUTCDate();
     const year = d.getUTCFullYear();
-    if (interval === "1mo") return `${mon} ${year}`;
     return `${mon} ${day}, ${year}`;
   }
 
   // Widen tick spacing for denser intervals so labels don't overlap.
-  const minTickGap = interval === "1d" ? 60 : interval === "1wk" ? 50 : 40;
+  const minTickGap = 60;
 
   const handleAnalyze = async () => {
     setIsLoading(true);
     const periods = forecastDays ?? 7;
     try {
-      const res = await api.analyze(symbol, {
-        model: "chronos",
-        interval: "1d",
-        periods,
-      });
+      let res;
+      if (isCrypto && model === "assembly") {
+        const cryptoRes = await api.cryptoForecast(symbol, { periods });
+        res = {
+          ...cryptoRes,
+          interval: "1d",
+          forecast_horizon_label: `${periods} day${
+            periods > 1 ? "s" : ""
+          } ahead (Assembly model)`,
+          data_points_used: 0,
+        };
+      } else {
+        res = await api.analyze(symbol, {
+          model: "chronos",
+          interval: "1d",
+          periods,
+        });
+      }
       setForecast(res);
+      onForecastData?.(res, model);
       toast({
-        title: "Analysis Complete",
-        description: `Forecast generated using ${model === "chronos" ? "Chronos" : model} model.`,
+        title: "Forecast Complete",
+        description:
+          isCrypto && model === "assembly"
+            ? `Assembly model (GRU + N-HiTS + LightGBM) — ${periods}-day forecast.`
+            : `Forecast generated using Chronos model.`,
       });
       onForecastComplete?.(model);
     } catch (error: any) {
       toast({
-        title: "Analysis Failed",
+        title: "Forecast Failed",
         description: error.message || "An error occurred",
         variant: "destructive",
       });
@@ -191,66 +200,57 @@ export function StockChart({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex flex-wrap items-center gap-4">
-          <div id="tour-stock-interval">
-            <Select
-              value={interval}
-              onValueChange={(val: any) => {
-                setInterval(val);
-                setForecast(null);
-              }}
+      {/* Description row */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Daily price data · 7-day forecast · 95% confidence interval
+        </p>
+        {/* View range buttons */}
+        <div id="tour-stock-interval" className="flex items-center gap-1">
+          {([30, 90, 180, 365, 0] as const).map((d) => (
+            <button
+              key={d}
+              onClick={() => { setViewDays(d); setForecast(null); }}
+              className={`px-2 py-1 text-xs rounded font-medium transition-colors ${
+                viewDays === d
+                  ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              <SelectTrigger className="w-[120px] h-9">
-                <SelectValue placeholder="Interval" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1d">Daily</SelectItem>
-                <SelectItem value="1wk">Weekly</SelectItem>
-                <SelectItem value="1mo">Monthly</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+              {d === 0 ? "All" : d === 30 ? "1M" : d === 90 ? "3M" : d === 180 ? "6M" : "1Y"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Model + forecast controls row */}
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">Forecast model:</span>
           <div id="tour-stock-model">
-            <Select value={model} onValueChange={(val: string) => setModel(val as "chronos")}>
-              <SelectTrigger className="min-w-[200px] w-[200px] h-9">
+            <Select
+              value={isCrypto ? model : "chronos"}
+              onValueChange={(val: string) => setModel(val as "chronos" | "assembly")}
+            >
+              <SelectTrigger className="w-[210px] h-9">
                 <SelectValue placeholder="Select Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="chronos">Chronos</SelectItem>
+                {isCrypto && (
+                  <SelectItem value="assembly">Assembly (GRU+N-HiTS+LGB)</SelectItem>
+                )}
+                <SelectItem value="chronos">
+                  Chronos {isCrypto ? "(benchmark)" : ""}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {setForecastDays && (
-            <Select
-              value={String(forecastDays)}
-              onValueChange={(v) => setForecastDays(Number(v) as 7 | 14 | 21)}
-            >
-              <SelectTrigger className="w-[110px] h-9">
-                <SelectValue placeholder="Forecast" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7 days</SelectItem>
-                <SelectItem value="14">14 days</SelectItem>
-                <SelectItem value="21">21 days</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          {setCompareAll && (
-            <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
-              <input
-                type="checkbox"
-                checked={compareAll}
-                onChange={(e) => setCompareAll(e.target.checked)}
-                className="rounded"
-              />
-              Compare all
-            </label>
-          )}
         </div>
         <div id="tour-stock-forecast-btn">
           <Button onClick={handleAnalyze} disabled={isLoading || metricsLoading}>
-            {(isLoading || metricsLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {(isLoading || metricsLoading) && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
             Generate Forecast
           </Button>
         </div>
@@ -277,7 +277,11 @@ export function StockChart({
             <Tooltip
               formatter={(value: number, name: string) => [
                 `$${Number(value).toFixed(2)}`,
-                name === "price" ? "Historical" : name === "forecast" ? "Forecast" : name,
+                name === "price"
+                  ? "Historical"
+                  : name === "forecast"
+                  ? "Forecast"
+                  : name,
               ]}
               labelFormatter={(label) => formatTooltipLabel(label)}
               contentStyle={{
@@ -286,13 +290,23 @@ export function StockChart({
                 borderRadius: "8px",
                 color: "#f1f5f9",
               }}
-              labelStyle={{ color: "#22d3ee", fontWeight: 700, marginBottom: 4 }}
+              labelStyle={{
+                color: "#22d3ee",
+                fontWeight: 700,
+                marginBottom: 4,
+              }}
               itemStyle={{ color: "#f1f5f9" }}
               cursor={{ stroke: "rgba(0,212,255,0.3)", strokeWidth: 1 }}
             />
             <Legend
               wrapperStyle={{ paddingTop: 8 }}
-              formatter={(value) => (value === "price" ? "Historical" : value === "forecast" ? "Forecast" : value)}
+              formatter={(value) =>
+                value === "price"
+                  ? "Historical"
+                  : value === "forecast"
+                  ? "Forecast"
+                  : value
+              }
             />
             {firstForecastDate && (
               <ReferenceLine
@@ -312,37 +326,39 @@ export function StockChart({
               connectNulls={false}
             />
             {forecast && (
+              <Area
+                type="monotone"
+                dataKey="upper"
+                stroke="none"
+                fill="#a78bfa"
+                fillOpacity={0.12}
+                dot={false}
+                connectNulls={true}
+                legendType="none"
+                name="upper_hidden"
+              />
+            )}
+            {forecast && (
+              <Area
+                type="monotone"
+                dataKey="lower"
+                stroke="none"
+                fill="#0f172a"
+                fillOpacity={1}
+                dot={false}
+                connectNulls={true}
+                legendType="none"
+                name="lower_hidden"
+              />
+            )}
+            {forecast && (
               <Line
                 type="monotone"
                 dataKey="forecast"
-                name="forecast"
+                name="Forecast"
                 stroke="#a78bfa"
                 strokeWidth={2}
                 strokeDasharray="6 4"
-                dot={false}
-                connectNulls={true}
-              />
-            )}
-            {forecast && (
-              <Line
-                type="monotone"
-                dataKey="upper"
-                name="Upper bound"
-                stroke="hsl(var(--muted-foreground))"
-                strokeDasharray="4 4"
-                strokeOpacity={0.7}
-                dot={false}
-                connectNulls={true}
-              />
-            )}
-            {forecast && (
-              <Line
-                type="monotone"
-                dataKey="lower"
-                name="Lower bound"
-                stroke="hsl(var(--muted-foreground))"
-                strokeDasharray="4 4"
-                strokeOpacity={0.7}
                 dot={false}
                 connectNulls={true}
               />

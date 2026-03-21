@@ -43,6 +43,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
 from app.api.dependencies import get_db
+from analytics.forecasting import chronos2
 from data_engine.coordinator import DataCoordinator
 from schemas.analyze import AnalyzeRequest, AnalyzeResponse, SyncSummary
 from schemas.forecast import INTERVAL_CONFIG
@@ -350,8 +351,25 @@ async def analyze(
     # ── 4. Validate minimum data points for the interval ──────────────────
     _validate_interval_minimums(prices, request.interval, symbol)
 
-    # ── 5. No forecast model configured — return sync + empty forecast ─────
-    result = _empty_forecast_result(request.confidence_level)
+    # ── 5. Run Chronos forecast ───────────────────────────────────────────
+    try:
+        result = await loop.run_in_executor(
+            _executor,
+            lambda: chronos2.forecast(
+                prices,
+                request.periods,
+                request.confidence_level,
+                request.interval,
+            ),
+        )
+    except Exception as exc:
+        logger.exception("Chronos forecast failed for %s", symbol)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Chronos forecast failed: {exc}",
+        ) from exc
+
+    horizon_label = _horizon_label(request.periods, request.interval)
 
     # ── 6. Assemble and return the unified response ───────────────────────
     return AnalyzeResponse(
@@ -359,8 +377,9 @@ async def analyze(
         sync=sync_summary,
         interval=request.interval,
         model=request.model,
-        periods_ahead=0,
-        forecast_horizon_label="",
+        periods_ahead=request.periods,
+        forecast_horizon_label=horizon_label,
         data_points_used=len(prices),
+        confidence_level=request.confidence_level,
         **result,
     )

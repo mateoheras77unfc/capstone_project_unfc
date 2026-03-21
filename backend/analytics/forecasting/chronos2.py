@@ -80,6 +80,14 @@ def forecast(
     upper_q = 1.0 - alpha / 2
     quantile_levels = [lower_q, 0.5, upper_q]
 
+    # Resample to a regular DatetimeIndex so Chronos can infer frequency.
+    # Stock data has weekend/holiday gaps; forward-fill keeps values valid.
+    freq_map = {"1d": "D", "1wk": "W", "1mo": "MS"}
+    freq = freq_map.get(interval, "D")
+    prices = prices.resample(freq).last().ffill()
+    # Limit context to last 512 rows — Chronos-2 max context window.
+    prices = prices.iloc[-512:]
+
     # Single-series context DataFrame (Chronos-2 expects id, timestamp, target)
     context_df = pd.DataFrame(
         {

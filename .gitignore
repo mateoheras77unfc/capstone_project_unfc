@@ -23,3 +23,13 @@ frontend/dist/
 
 # Model experiments and artifacts (do not push)
 model/
+
+# PyTorch Lightning training logs (TensorBoard events)
+lightning_logs/
+backend/lightning_logs/
+
+# PyTorch checkpoint files (intermediate training state)
+*.ckpt
+
+# Accidental copy scripts
+"backend/scripts/train_crypto_assembly copy.py"

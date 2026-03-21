@@ -7,7 +7,6 @@ export default async function StockPage({
   searchParams: Promise<{ symbol?: string; from?: string; to?: string }>;
 }) {
   const { symbol, from, to } = await searchParams;
-  const upperSymbol = symbol?.toUpperCase();
 
   // Default dates: last year to today
   const today = new Date();
@@ -20,22 +19,27 @@ export default async function StockPage({
   // Fetch all available assets for the dropdown
   const assets = await api.getAssets().catch(() => []);
 
+  // Normalize symbol: if user typed "BTC" try to match "BTC-USD" from assets
+  let upperSymbol = symbol?.toUpperCase();
+  if (upperSymbol && !assets.find((a) => a.symbol === upperSymbol)) {
+    const withSuffix = assets.find((a) => a.symbol === `${upperSymbol}-USD`);
+    if (withSuffix) upperSymbol = withSuffix.symbol;
+  }
+
   let prices = null;
   let stats = null;
 
-  if (upperSymbol) {
+  if (upperSymbol && assets.find((a) => a.symbol === upperSymbol)) {
     try {
-      // Fetch up to 10 years of daily data so Weekly and Monthly
-      // aggregations on the frontend are visually distinct from Daily.
       prices = await api.getPrices(upperSymbol, 2500);
     } catch (e) {
       console.error("Failed to fetch prices:", e);
     }
 
     try {
-      // Pick a partner symbol dynamically from the DB instead of hardcoding
-      // AAPL/GOOG — those may not exist after a DB truncation + re-sync.
-      const partner = assets.find((a) => a.symbol !== upperSymbol)?.symbol;
+      // Pick a partner of the same asset_type to avoid cross-type alignment issues
+      const assetType = assets.find((a) => a.symbol === upperSymbol)?.asset_type;
+      const partner = assets.find((a) => a.symbol !== upperSymbol && a.asset_type === assetType)?.symbol;
       if (partner) {
         stats = await api.portfolioStats({
           symbols: [upperSymbol, partner],
@@ -44,8 +48,8 @@ export default async function StockPage({
           to_date: toDate,
         });
       }
-    } catch (e) {
-      console.error("Failed to fetch stats:", e);
+    } catch {
+      // Stats are optional — partner may not have enough data
     }
   }
 

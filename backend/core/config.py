@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = Field(..., description="Supabase project URL")
     SUPABASE_KEY: str = Field(..., description="Supabase anon or service-role key")
 
+    # ── AWS Bedrock (Nova) ────────────────────────────────────────────────
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-1"
+
     # ── CORS ──────────────────────────────────────────────────────────────
     # Optional extra origin injected by the hosting environment.
     FRONTEND_URL: str = ""

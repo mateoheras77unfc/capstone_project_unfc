@@ -187,6 +187,40 @@ export interface SimulationSummary {
   max_drawdown:  number;
 }
 
+export interface CryptoModelMetric {
+  model: string;
+  mae: number;
+  rmse: number;
+  mape: number;
+  trained_at?: string;
+}
+
+export interface CryptoMetricsResponse {
+  symbol: string;
+  metrics: CryptoModelMetric[];
+}
+
+export interface CryptoForecastRequest {
+  periods?: number;
+  confidence_level?: number;
+  force_reload?: boolean;
+  nova_sentiment?: string;
+}
+
+export interface CryptoForecastResponse {
+  symbol: string;
+  periods_ahead: number;
+  dates: string[];
+  point_forecast: number[];
+  lower_bound: number[];
+  upper_bound: number[];
+  confidence_level: number;
+  model: string;
+  model_info: Record<string, any>;
+  nova_sentiment?: "bullish" | "bearish" | "neutral" | null;
+  nova_insight?: string | null;
+}
+
 export interface SimulateResponse {
   symbols: string[];
   interval: string;

@@ -14,6 +14,9 @@ import {
   OptimizeResponse,
   SimulateRequest,
   SimulateResponse,
+  CryptoForecastRequest,
+  CryptoForecastResponse,
+  CryptoMetricsResponse,
 } from "@/types/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -81,6 +84,22 @@ export const api = {
 
   // Analyze
   analyze: (symbol: string, data: AnalyzeRequest) => fetchApi<AnalyzeResponse>(`/analyze/${symbol}`, { method: "POST", body: JSON.stringify(data) }),
+
+  // Crypto Assembly Forecast
+  cryptoForecast: (symbol: string, data?: CryptoForecastRequest) =>
+    fetchApi<CryptoForecastResponse>(`/crypto/forecast/${symbol}`, {
+      method: "POST",
+      body: JSON.stringify(data ?? { periods: 7 }),
+    }),
+  getCryptoMetrics: (symbol: string) =>
+    fetchApi<CryptoMetricsResponse>(`/crypto/forecast/${symbol}/metrics`),
+
+  // News (Amazon Bedrock Nova)
+  getNews: (symbol: string) => fetchApi<{ symbol: string; news: { title: string; summary: string; sentiment: string; source: string; url: string }[] }>(`/news/${symbol}`),
+
+  // Nova Insight
+  getNovaInsight: (data: { symbol: string; point_forecast: number[]; lower_bound: number[]; upper_bound: number[]; dates: string[]; sentiment?: string }) =>
+    fetchApi<{ symbol: string; insight: string }>("/nova/insight/", { method: "POST", body: JSON.stringify(data) }),
 
   // Portfolio
   portfolioStats: (data: StatsRequest) => fetchApi<StatsResponse>("/portfolio/stats", { method: "POST", body: JSON.stringify(data) }),

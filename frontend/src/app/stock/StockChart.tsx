@@ -140,8 +140,6 @@ export function StockChart({
     const mon = MONTHS[d.getUTCMonth()];
     const day = d.getUTCDate();
     const yr = String(d.getUTCFullYear()).slice(2); // "26"
-    if (interval === "1mo") return `${mon} '${yr}`; // "Feb '26"
-    if (interval === "1wk") return `${mon} ${day}`; // "Feb 23"
     return `${mon} ${day}`; // "Feb 23" (daily)
   }
 
@@ -151,12 +149,11 @@ export function StockChart({
     const mon = MONTHS[d.getUTCMonth()];
     const day = d.getUTCDate();
     const year = d.getUTCFullYear();
-    if (interval === "1mo") return `${mon} ${year}`;
     return `${mon} ${day}, ${year}`;
   }
 
   // Widen tick spacing for denser intervals so labels don't overlap.
-  const minTickGap = interval === "1d" ? 60 : interval === "1wk" ? 50 : 40;
+  const minTickGap = 60;
 
   const handleAnalyze = async () => {
     setIsLoading(true);

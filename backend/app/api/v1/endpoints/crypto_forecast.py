@@ -90,38 +90,61 @@ class CryptoForecastResponse(BaseModel):
 
 def _load_model(symbol: str, db: Client, force_reload: bool = False) -> Any:
     """
-    Load assembly model for symbol from cache or local disk.
+    Load assembly model for symbol from cache, local disk, or Supabase Storage.
 
-    Args:
-        symbol:       Ticker e.g. 'BTC-USD'.
-        db:           Supabase client (unused, kept for signature compatibility).
-        force_reload: If True, bypass cache and reload from disk.
-
-    Returns:
-        Fitted CryptoAssemblyForecaster instance.
+    Order:
+      1. In-memory cache (fastest)
+      2. Local disk at CHECKPOINTS_DIR (dev / already-downloaded)
+      3. Supabase Storage bucket 'models' (production / Render)
 
     Raises:
-        HTTPException 404: Model file not found on disk.
-        HTTPException 503: Model deserialization failed.
+        HTTPException 404: Model not found locally or in Storage.
+        HTTPException 503: Model deserialization or download failed.
     """
     if not force_reload and symbol in _model_cache:
         logger.info("Model cache hit for %s", symbol)
         return _model_cache[symbol]
 
     file_path = CHECKPOINTS_DIR / f"assembly_{symbol}.joblib"
-    logger.info("Loading model from disk: %s", file_path)
 
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"No trained model found for '{symbol}'. "
-                f"Run the training script first: python scripts/train_crypto_assembly.py"
-            ),
-        )
+    # ── Download from Supabase Storage if not on disk ─────────────────────────
+    if not file_path.exists() or force_reload:
+        storage_name = f"assembly_{symbol}.joblib"
+        logger.info("Local model not found for %s — downloading from Storage...", symbol)
+        try:
+            data: bytes = db.storage.from_("models").download(storage_name)
+            CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+            file_path.write_bytes(data)
+            logger.info("Model downloaded and saved: %s (%.1f MB)", file_path, len(data) / 1e6)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model for '{symbol}' not found in Storage: {exc}",
+            ) from exc
 
     try:
-        model = joblib.load(file_path)
+        # Remap MPS (Apple Silicon) tensors to CPU for cross-platform loading.
+        # Models trained on Mac save tensors on MPS device; Linux has no MPS.
+        import torch
+        _orig_torch_load = torch.load
+        torch.load = lambda *a, **kw: _orig_torch_load(*a, **{**kw, "map_location": "cpu"})
+        try:
+            model = joblib.load(file_path)
+        finally:
+            torch.load = _orig_torch_load
+
+        # Move all sub-model PyTorch modules from MPS → CPU.
+        cpu = torch.device("cpu")
+        for attr in vars(model).values():
+            if hasattr(attr, "_device"):
+                attr._device = cpu
+            if hasattr(attr, "_model") and hasattr(attr._model, "to"):
+                attr._model = attr._model.to(cpu)
+            # NeuralForecast objects store models in .models list
+            if hasattr(attr, "models"):
+                for m in attr.models:
+                    if hasattr(m, "to"):
+                        m.to(cpu)
     except Exception as exc:
         raise HTTPException(
             status_code=503,
@@ -300,8 +323,26 @@ def _generate_nova_insight(symbol: str, forecast: Dict[str, Any], sentiment: str
 
 def _run_forecast(symbol: str, periods: int, db: Client, force_reload: bool, nova_sentiment: Optional[str] = None) -> Dict[str, Any]:
     """Load model and run sentiment-aware forecast using the provided market sentiment."""
+    import os
+    import torch
     model = _load_model(symbol, db, force_reload)
     _inject_train_df_if_missing(model, symbol, db)
+
+    # ── Force CPU on NHiTS trainer (Render has no MPS or CUDA) ───────────────
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    nhits = getattr(model, "_nhits", None)
+    if nhits is not None:
+        nf = getattr(nhits, "nf", None)
+        if nf is not None:
+            try:
+                if hasattr(nf, "trainer_kwargs"):
+                    nf.trainer_kwargs["accelerator"] = "cpu"
+                    nf.trainer_kwargs["devices"] = 1
+                if hasattr(nf, "model") and nf.model is not None:
+                    nf.model = nf.model.cpu()
+            except Exception as e:
+                logger.warning("Could not force CPU on NHiTS trainer: %s", e)
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Check if this model supports fear_greed sentiment injection
     fear_greed_active = False

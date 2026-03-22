@@ -95,24 +95,73 @@ export function SparkChat({ context }: SparkChatProps = {}) {
     if (open && !isVoiceMode) setTimeout(() => inputRef.current?.focus(), 280);
   }, [open, isVoiceMode]);
 
-  // ── TTS: speak reply, then restart recording if still in voice mode ───────────
+  // ── TTS: speak reply via Amazon Polly (Matthew, neural), then restart recording
+  // Single persistent <audio> element — created once so iOS keeps it "unlocked"
+  // after the user gesture in toggleVoiceMode.
+  const audioElemRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    audioElemRef.current = new Audio();
+    return () => { audioElemRef.current?.pause(); };
+  }, []);
+
   const speakAndListen = useCallback((text: string) => {
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(stripMd(text));
-    utter.rate = 1.05;
+    // Stop any playing audio
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
     setVoiceStep("speaking");
-    utter.onend = () => {
-      if (voiceModeRef.current) {
-        startVoiceRecordingRef.current();
-      } else {
-        setVoiceStep("idle");
-      }
-    };
-    utter.onerror = () => {
-      setVoiceStep("idle");
-      if (voiceModeRef.current) startVoiceRecordingRef.current();
-    };
-    window.speechSynthesis.speak(utter);
+
+    fetch(`${API_URL}/chat/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: stripMd(text) }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Polly failed");
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        // Reuse the persistent element so iOS keeps the unlock from the tap
+        const audio = audioElemRef.current ?? new Audio();
+        audio.src = url;
+        currentAudioRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          currentAudioRef.current = null;
+          if (voiceModeRef.current) startVoiceRecordingRef.current();
+          else setVoiceStep("idle");
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          currentAudioRef.current = null;
+          setVoiceStep("idle");
+          if (voiceModeRef.current) startVoiceRecordingRef.current();
+        };
+        audio.play().catch(() => {
+          // Fallback to browser TTS if play() still blocked
+          const utter = new SpeechSynthesisUtterance(stripMd(text));
+          utter.rate = 1.05;
+          utter.onend = () => {
+            if (voiceModeRef.current) startVoiceRecordingRef.current();
+            else setVoiceStep("idle");
+          };
+          window.speechSynthesis.speak(utter);
+        });
+      })
+      .catch(() => {
+        // Fallback to browser TTS if Polly fails
+        const utter = new SpeechSynthesisUtterance(stripMd(text));
+        utter.rate = 1.05;
+        utter.onend = () => {
+          if (voiceModeRef.current) startVoiceRecordingRef.current();
+          else setVoiceStep("idle");
+        };
+        window.speechSynthesis.speak(utter);
+      });
   }, []);
 
   // ── Send transcribed text to API, then speak the response ─────────────────────
@@ -298,10 +347,18 @@ export function SparkChat({ context }: SparkChatProps = {}) {
       setIsVoiceMode(false);
       setVoiceStep("idle");
       window.speechSynthesis.cancel();
+      if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
       if (mediaRecorderRef.current?.state === "recording")
         mediaRecorderRef.current.stop();
     } else {
-      // Activate → immediately start recording
+      // Activate → unlock audio on this user gesture (required for iOS autoplay)
+      const au = audioElemRef.current;
+      if (au) {
+        // Play a silent data URI so the element is "unlocked" for future play() calls
+        au.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+        au.volume = 0;
+        au.play().catch(() => {}).finally(() => { au.pause(); au.src = ""; au.volume = 1; });
+      }
       voiceModeRef.current = true;
       setIsVoiceMode(true);
       window.speechSynthesis.cancel();
@@ -402,6 +459,7 @@ export function SparkChat({ context }: SparkChatProps = {}) {
         onClick={() => {
           setOpen((v) => !v);
           window.speechSynthesis.cancel();
+          if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
         }}
         aria-label="Toggle SparkChat"
         className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center border transition-all duration-200 shadow-[0_0_24px_rgba(0,212,255,0.25)]

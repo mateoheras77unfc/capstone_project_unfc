@@ -246,3 +246,40 @@ async def transcribe_audio(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=502, detail=f"Whisper error: {resp.text}")
 
     return {"transcript": resp.json().get("text", "")}
+
+
+# ── TTS endpoint (Amazon Polly) ────────────────────────────────────────────────
+class SpeakRequest(BaseModel):
+    text: str
+
+
+@router.post("/speak")
+async def speak_text(request: SpeakRequest):
+    """
+    Convert text to speech using Amazon Polly (Matthew — neural, US English male).
+    Returns MP3 audio as a streaming response.
+    """
+    import boto3
+    from fastapi.responses import StreamingResponse
+
+    text = request.text[:3000]  # Polly limit safety
+
+    try:
+        polly = boto3.client(
+            "polly",
+            region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        )
+        response = polly.synthesize_speech(
+            TextType="ssml",
+            Text=f'<speak><prosody rate="108%">{text}</prosody></speak>',
+            OutputFormat="mp3",
+            VoiceId="Matthew",
+            Engine="neural",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Polly error: {exc}")
+
+    audio_stream = response["AudioStream"]
+    return StreamingResponse(audio_stream, media_type="audio/mpeg")

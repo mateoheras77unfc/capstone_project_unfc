@@ -21,9 +21,6 @@ frontend/dist/
 .vscode/
 .idea/
 
-# Model experiments and artifacts (do not push)
-model/
-
 # PyTorch Lightning training logs (TensorBoard events)
 lightning_logs/
 backend/lightning_logs/
